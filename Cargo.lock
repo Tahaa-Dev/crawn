@@ -226,10 +226,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "crawx"
+name = "crawn"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "owo-colors",
  "reqwest",
  "resext",
  "scraper",
@@ -876,6 +877,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f50d9b3dabb09ecd771ad0aa242ca6894994c130308ca3d7684634df8037391"
 
 [[package]]
+name = "owo-colors"
+version = "4.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c6901729fa79e91a0913333229e9ca5dc725089d1c363b2f4b4760709dc4a52"
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1151,9 +1158,9 @@ dependencies = [
 
 [[package]]
 name = "resext"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07ea755abb31dc2e7d4c34218ffccc16feb6a6463bf0e050c324e0d7a5783f17"
+checksum = "9db481309fab8a3ce548efe10411a8fc82de5b501e1dd137ba250460c4590109"
 
 [[package]]
 name = "ring"
