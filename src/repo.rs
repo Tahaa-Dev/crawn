@@ -7,6 +7,8 @@ pub(crate) trait UrlRepo {
     fn pop(&mut self) -> Res<Option<String>>;
 
     fn len(&self) -> Res<usize>;
+
+    fn crawled_len(&self) -> Res<usize>;
 }
 
 #[derive(Debug)]
@@ -16,7 +18,7 @@ pub(crate) struct InMemoryRepo {
 }
 
 impl InMemoryRepo {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         InMemoryRepo {
             urls: VecDeque::new(),
             visited: HashSet::new(),
@@ -43,5 +45,9 @@ impl UrlRepo for InMemoryRepo {
 
     fn len(&self) -> Res<usize> {
         Ok(self.urls.len())
+    }
+
+    fn crawled_len(&self) -> Res<usize> {
+        Ok(self.visited.len())
     }
 }

@@ -51,7 +51,7 @@ pub(crate) trait Log<T: Default> {
     async fn log_err(self) -> Res<T>;
 }
 
-// Uses Default(s) as `String::new()` is free, and it is cleaner than Option<T>
+// Uses Default(s) because `String::new()` is free, and it is cleaner than Option<T>
 impl<T: Default> Log<T> for Res<T> {
     async fn log_err(self) -> Res<T> {
         match self {

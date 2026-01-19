@@ -1,5 +1,5 @@
 use owo_colors::OwoColorize;
-use scraper::Selector;
+use scraper::{Html, Selector};
 use url::Url;
 
 use crate::{
@@ -7,7 +7,8 @@ use crate::{
     error::{Res, ResExt},
 };
 
-pub(crate) async fn fetch_url(url: &str, client: reqwest::Client) -> Res<String> {
+pub(crate) async fn fetch_url(url: &str, client: &reqwest::Client) -> Res<String> {
+    // Reuse reqwest::Client for performance
     let res = client
         .get(url)
         .send()
@@ -25,16 +26,12 @@ pub(crate) async fn fetch_url(url: &str, client: reqwest::Client) -> Res<String>
 }
 
 pub(crate) fn extract_links<R: UrlRepo>(
-    text: &str,
+    document: &Html,
     repo: &mut R,
-    base: &str,
-    selector: &Selector,
+    base: &Url,
+    anchor_selector: &Selector,
 ) -> Res<()> {
-    let document = scraper::Html::parse_document(text);
-
-    let base = Url::parse(base).context("Failed to parse base URL")?;
-
-    for url in document.select(selector) {
+    for url in document.select(anchor_selector) {
         if let Some(href) = url.attr("href") {
             let abs = base
                 .join(href.trim_end_matches('/'))
@@ -47,6 +44,35 @@ pub(crate) fn extract_links<R: UrlRepo>(
     }
 
     Ok(())
+}
+
+pub(crate) fn extract_keywords(document: &Html, meta_selector: &Selector) -> String {
+    let mut res = String::new();
+
+    if let Some(meta) = document.select(meta_selector).next() {
+        if let Some(keywords) = meta.attr("content") {
+            res.push_str(keywords);
+        }
+    }
+
+    // normalize whitespaces
+    res.replace(" ", "").to_lowercase()
+}
+
+pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String {
+    if let Some(body) = document.select(&body_selector).next() {
+        body.text().collect()
+    } else {
+        String::new()
+    }
+}
+
+pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> String {
+    if let Some(title) = document.select(title_selector).next() {
+        title.text().collect()
+    } else {
+        String::new()
+    }
 }
 
 fn normalize_url(mut url: Url) -> Res<String> {
