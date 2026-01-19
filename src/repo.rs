@@ -26,7 +26,7 @@ impl InMemoryRepo {
 
 impl UrlRepo for InMemoryRepo {
     fn add(&mut self, url: String) -> Res<()> {
-        if self.visited.contains(&url) {
+        if self.visited.contains(&url) || url.is_empty() {
             Ok(())
         } else {
             self.visited.insert(url.clone());

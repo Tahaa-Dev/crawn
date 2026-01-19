@@ -24,15 +24,20 @@ pub(crate) async fn fetch_url(url: &str, client: reqwest::Client) -> Res<String>
     Ok(text)
 }
 
-pub(crate) fn extract_links<R: UrlRepo>(text: &str, repo: &mut R, base: &str, selector: &Selector) -> Res<()> {
+pub(crate) fn extract_links<R: UrlRepo>(
+    text: &str,
+    repo: &mut R,
+    base: &str,
+    selector: &Selector,
+) -> Res<()> {
     let document = scraper::Html::parse_document(text);
 
-    let base = Url::parse(base)
-        .context("Failed to parse base URL")?;
+    let base = Url::parse(base).context("Failed to parse base URL")?;
 
     for url in document.select(selector) {
         if let Some(href) = url.attr("href") {
-            let abs = base.join(href.trim_end_matches('/'))
+            let abs = base
+                .join(href.trim_end_matches('/'))
                 .with_context(|| format!("Failed to resolve relative URL: {}", href))?;
 
             repo.add(normalize_url(abs)?);

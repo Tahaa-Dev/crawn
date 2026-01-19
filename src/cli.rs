@@ -23,4 +23,7 @@ pub struct Args {
     /// Will abort if file doesn's have ".ndjson" extension
     #[arg(required = true, value_hint = clap::ValueHint::FilePath, global = true)]
     pub output: PathBuf,
+
+    #[arg(short, long, value_hint = clap::ValueHint::FilePath, global = true)]
+    pub log_file: Option<PathBuf>,
 }
