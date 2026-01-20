@@ -47,15 +47,15 @@ async fn init_logger() -> &'static Option<Mutex<File>> {
         .await
 }
 
-pub(crate) trait Log<T: Default> {
-    async fn log_err(self) -> Res<T>;
+pub(crate) trait Log<T> {
+    async fn log_err(self) -> Res<Option<T>>;
 }
 
 // Uses Default(s) because `String::new()` is free, and it is cleaner than Option<T>
-impl<T: Default> Log<T> for Res<T> {
-    async fn log_err(self) -> Res<T> {
+impl<T> Log<T> for Res<T> {
+    async fn log_err(self) -> Res<Option<T>> {
         match self {
-            Ok(ok) => Ok(ok),
+            Ok(ok) => Ok(Some(ok)),
             Err(err) => {
                 if let Some(file) = init_logger().await {
                     let mut wtr = file.lock().await;
@@ -68,12 +68,23 @@ impl<T: Default> Log<T> for Res<T> {
                         .await
                         .context("Failed to write delimiter between logs into log file")?;
 
-                    Ok(T::default())
+                    Ok(None)
                 } else {
                     eprintln!("{}\n\n---\n\n", err);
-                    Ok(T::default())
+                    Ok(None)
                 }
             }
         }
     }
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! match_option {
+    ($opt:expr) => {
+        match $opt {
+            Some(v) => v,
+            None => continue,
+        }
+    };
 }

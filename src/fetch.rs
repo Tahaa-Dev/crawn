@@ -22,46 +22,44 @@ pub(crate) async fn fetch_url(url: &str, client: &reqwest::Client) -> Res<String
         )
     })?;
 
+    // Use simple sleep for rate-limiting for MVP
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
     Ok(text)
 }
 
-pub(crate) fn extract_links<R: UrlRepo>(
+pub(crate) async fn extract_links<R: UrlRepo>(
     document: &Html,
     repo: &mut R,
     base: &Url,
     anchor_selector: &Selector,
-) -> Res<()> {
+) -> Res<usize> {
+    let mut res = 0usize;
+
     for url in document.select(anchor_selector) {
         if let Some(href) = url.attr("href") {
             let abs = base
                 .join(href.trim_end_matches('/'))
                 .with_context(|| format!("Failed to resolve relative URL: {}", href))?;
 
-            repo.add(normalize_url(abs)?);
+            repo.add(normalize_url(abs)?).await?;
+
+            res += 1;
         } else {
             unreachable!()
         }
     }
 
-    Ok(())
-}
-
-pub(crate) fn extract_keywords(document: &Html, meta_selector: &Selector) -> String {
-    let mut res = String::new();
-
-    if let Some(meta) = document.select(meta_selector).next() {
-        if let Some(keywords) = meta.attr("content") {
-            res.push_str(keywords);
-        }
-    }
-
-    // normalize whitespaces
-    res.replace(" ", "").to_lowercase()
+    Ok(res)
 }
 
 pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String {
-    if let Some(body) = document.select(&body_selector).next() {
-        body.text().collect()
+    if let Some(body) = document.select(body_selector).next() {
+        body.text()
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     } else {
         String::new()
     }
@@ -69,7 +67,10 @@ pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String 
 
 pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> String {
     if let Some(title) = document.select(title_selector).next() {
-        title.text().collect()
+        title.text()
+            .collect::<String>()
+            .trim()
+            .to_string()
     } else {
         String::new()
     }

@@ -2,13 +2,9 @@ use crate::error::Res;
 use std::collections::{HashSet, VecDeque};
 
 pub(crate) trait UrlRepo {
-    fn add(&mut self, url: String) -> Res<()>;
+    async fn add(&mut self, url: String) -> Res<()>;
 
-    fn pop(&mut self) -> Res<Option<String>>;
-
-    fn len(&self) -> Res<usize>;
-
-    fn crawled_len(&self) -> Res<usize>;
+    async fn pop(&mut self) -> Res<Option<String>>;
 }
 
 #[derive(Debug)]
@@ -18,7 +14,7 @@ pub(crate) struct InMemoryRepo {
 }
 
 impl InMemoryRepo {
-    pub(crate) fn new() -> Self {
+    pub(crate) async fn new() -> Self {
         InMemoryRepo {
             urls: VecDeque::new(),
             visited: HashSet::new(),
@@ -27,7 +23,7 @@ impl InMemoryRepo {
 }
 
 impl UrlRepo for InMemoryRepo {
-    fn add(&mut self, url: String) -> Res<()> {
+    async fn add(&mut self, url: String) -> Res<()> {
         if self.visited.contains(&url) || url.is_empty() {
             Ok(())
         } else {
@@ -39,15 +35,7 @@ impl UrlRepo for InMemoryRepo {
         }
     }
 
-    fn pop(&mut self) -> Res<Option<String>> {
+    async fn pop(&mut self) -> Res<Option<String>> {
         Ok(self.urls.pop_front())
-    }
-
-    fn len(&self) -> Res<usize> {
-        Ok(self.urls.len())
-    }
-
-    fn crawled_len(&self) -> Res<usize> {
-        Ok(self.visited.len())
     }
 }

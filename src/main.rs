@@ -11,23 +11,14 @@ mod output;
 mod repo;
 
 use crawler::*;
-use error::*;
-pub(crate) use fetch::*;
 pub(crate) use repo::*;
 
 #[doc(hidden)]
 pub(crate) static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
 
-async fn run() -> Res<()> {
-    let res = "TEMP".red();
-    println!("Fetched: {:?}", res);
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() {
-    match run().await {
+    match crawn().await {
         Ok(_) => {}
         Err(e) => {
             eprintln!("{} {}", "FATAL:".red().bold(), e);

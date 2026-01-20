@@ -7,17 +7,9 @@ use tokio::{
 
 use crate::error::{Res, ResExt};
 
-pub struct CrawledPage {
-    pub url: String,
-    pub title: String,
-    pub links: usize,
-    pub text: Option<String>,
-    pub content: Option<String>,
-}
-
 static WRITER: OnceCell<Mutex<BufWriter<File>>> = OnceCell::const_new();
 
-async fn init_logger() -> &'static Mutex<BufWriter<File>> {
+async fn init_writer() -> &'static Mutex<BufWriter<File>> {
     WRITER
         .get_or_init(async || {
             let args = &*crate::ARGS;
@@ -39,52 +31,50 @@ async fn init_logger() -> &'static Mutex<BufWriter<File>> {
                     1,
                 );
 
-            Mutex::new(BufWriter::with_capacity(16 * 1024, file))
+            Mutex::new(BufWriter::with_capacity(512, file))
         })
         .await
 }
 
-pub(crate) async fn write_output(page: CrawledPage) -> Res<()> {
-    let mut wtr = init_logger().await.lock().await;
+pub(crate) async fn write_output(
+    url: &str,
+    title: &str,
+    links: usize,
+    text: Option<&str>,
+    content: Option<&str>,
+) -> Res<()> {
+    let mut wtr = init_writer().await.lock().await;
 
     let mut esc_buf = Vec::new();
 
     wtr.write_all(b"{\"URL\": \"").await?;
-    escape_json(&page.url, &mut esc_buf);
+    escape_json(url, &mut esc_buf);
     wtr.write_all(esc_buf.as_slice()).await?;
 
     wtr.write_all(b"\", \"Title\": \"").await?;
-    escape_json(&page.title, &mut esc_buf);
+    escape_json(title, &mut esc_buf);
     wtr.write_all(esc_buf.as_slice()).await?;
 
     wtr.write_all(b"\", \"Links\": ").await?;
-    wtr.write_all(page.links.to_string().as_bytes()).await?;
+    wtr.write_all(links.to_string().as_bytes()).await?;
 
-    if let Some(text) = page.text {
+    if let Some(text) = text {
         wtr.write_all(b", \"Text\": \"").await?;
-        escape_json(&text, &mut esc_buf);
+        escape_json(text, &mut esc_buf);
         wtr.write_all(esc_buf.as_slice()).await?;
         wtr.write_all(b"\"").await?;
     }
 
-    if let Some(content) = page.content {
+    if let Some(content) = content {
         wtr.write_all(b", \"Content\": \"").await?;
-        escape_json(&content, &mut esc_buf);
+        escape_json(content, &mut esc_buf);
         wtr.write_all(esc_buf.as_slice()).await?;
         wtr.write_all(b"\"}\n").await?;
     } else {
         wtr.write_all(b"}\n").await?;
     }
 
-    Ok(())
-}
-
-pub(crate) async fn flush_output() -> Res<()> {
-    let mut wtr = init_logger().await.lock().await;
-
-    wtr.flush().await?;
-
-    Ok(())
+    wtr.flush().await.context("Failed to flush writer into output file")
 }
 
 fn escape_json(s: &str, buf: &mut Vec<u8>) {

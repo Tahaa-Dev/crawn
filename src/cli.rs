@@ -1,9 +1,10 @@
+use clap::ValueHint;
 use std::path::PathBuf;
 
 static LONG_ABT: &str = r#"
 crawn - A utility for fetching text from webpages with BFS expanding from a single page's URL
 
-• crawn provides a way to fetch text from webpages from a single URL, unlike traditional tools, crawn expands into other pages and fetches them by extracting URLs from pages and fetching them.
+• crawn provides a way to fetch text from webpages from a single URL, unlike traditional tools, crawn expands into other pages and fetches them by extracting URLs from pages an fetching them.
 • crawn has exceptional speed due to being built in optimized Rust with tokio async.
 "#;
 
@@ -16,14 +17,23 @@ crawn - A utility for fetching text from webpages with BFS expanding from a sing
 )]
 pub struct Args {
     /// Argument for setting the base URL for fetching
-    #[arg(required = true, value_hint = clap::ValueHint::Url)]
+    #[arg(required = true, value_hint = ValueHint::Url)]
     pub url: String,
 
     /// Argument for setting file to export output to
     /// Will abort if file doesn's have ".ndjson" extension
-    #[arg(required = true, value_hint = clap::ValueHint::FilePath, global = true)]
+    #[arg(short, long, required = true, value_hint = ValueHint::FilePath)]
     pub output: PathBuf,
 
-    #[arg(short, long, value_hint = clap::ValueHint::FilePath, global = true)]
+    #[arg(short, long, value_hint = ValueHint::FilePath, global = true)]
     pub log_file: Option<PathBuf>,
+
+    #[arg(long, global = true, conflicts_with = "include_text")]
+    pub include_content: bool,
+
+    #[arg(long, global = true, conflicts_with = "include_content")]
+    pub include_text: bool,
+
+    #[arg(short, long, global = true)]
+    pub depth: Option<u8>,
 }
