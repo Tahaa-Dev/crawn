@@ -1,4 +1,5 @@
 use owo_colors::OwoColorize;
+use resext::panic_if;
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncWriteExt, BufWriter},
@@ -14,6 +15,22 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
         .get_or_init(async || {
             let args = &*crate::ARGS;
             let path = &args.output;
+
+            let ext = path.extension().unwrap_or_else(|| std::ffi::OsStr::new(""));
+
+            panic_if!(
+                ext != "ndjson",
+                || format!(
+                    "{} Output file extension: {}{}{} is not: {}",
+                    "[FATAL]".red().bold(),
+                    "[".purple(),
+                    ext.display().purple(),
+                    "]".purple(),
+                    "[ndjson]".purple()
+                ),
+                1
+            );
+
             let file = OpenOptions::new()
                 .write(true)
                 .truncate(true)
@@ -24,7 +41,7 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
                     || {
                         format!(
                             "{} Failed to open output file: {}",
-                            "FATAL:".red().bold(),
+                            "[FATAL]".red().bold(),
                             path.to_string_lossy().red().bold()
                         )
                     },
@@ -74,7 +91,9 @@ pub(crate) async fn write_output(
         wtr.write_all(b"}\n").await?;
     }
 
-    wtr.flush().await.context("Failed to flush writer into output file")
+    wtr.flush()
+        .await
+        .context("Failed to flush writer into output file")
 }
 
 fn escape_json(s: &str, buf: &mut Vec<u8>) {

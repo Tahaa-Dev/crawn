@@ -16,12 +16,9 @@ crawn - A utility for fetching text from webpages with BFS expanding from a sing
     long_about = LONG_ABT
 )]
 pub struct Args {
-    /// Argument for setting the base URL for fetching
     #[arg(required = true, value_hint = ValueHint::Url)]
     pub url: String,
 
-    /// Argument for setting file to export output to
-    /// Will abort if file doesn's have ".ndjson" extension
     #[arg(short, long, required = true, value_hint = ValueHint::FilePath)]
     pub output: PathBuf,
 

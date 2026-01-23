@@ -1,5 +1,6 @@
 use owo_colors::OwoColorize;
 use resext::ResExt;
+use time::macros::format_description;
 use tokio::{
     fs::{File, OpenOptions},
     io::AsyncWriteExt,
@@ -48,29 +49,39 @@ async fn init_logger() -> &'static Option<Mutex<File>> {
 }
 
 pub(crate) trait Log<T> {
-    async fn log_err(self) -> Res<Option<T>>;
+    async fn log_err(self, level: &str) -> Res<Option<T>>;
 }
 
-// Uses Default(s) because `String::new()` is free, and it is cleaner than Option<T>
+const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
+    "[year]-[month padding:zero]-[day padding:zero] [hour]:[minute]:[second].[subsecond digits:3]"
+);
+
 impl<T> Log<T> for Res<T> {
-    async fn log_err(self) -> Res<Option<T>> {
+    async fn log_err(self, level: &str) -> Res<Option<T>> {
         match self {
             Ok(ok) => Ok(Some(ok)),
             Err(err) => {
+                let timestamp: String = time::OffsetDateTime::now_utc()
+                    .to_offset(
+                        time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC),
+                    )
+                    .format(&LOG_TIMESTAMP_FORMAT)
+                    .map_err(std::io::Error::other)
+                    .context("Failed to format timestamp for log")?;
+
                 if let Some(file) = init_logger().await {
                     let mut wtr = file.lock().await;
 
-                    wtr.write_all(err.to_string().as_bytes())
-                        .await
-                        .context("Failed to write logs into log file")?;
+                    let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
 
-                    wtr.write_all(b"\n\n---\n\n")
+                    wtr.write_all(log.as_bytes())
                         .await
-                        .context("Failed to write delimiter between logs into log file")?;
+                        .with_context(|| format!("Failed to write log at: {}", timestamp))?;
 
                     Ok(None)
                 } else {
-                    eprintln!("{}\n\n---\n\n", err);
+                    eprint!("{} {}:\n{}\n\n", timestamp.yellow(), level.purple(), err);
+
                     Ok(None)
                 }
             }

@@ -9,5 +9,7 @@ owo-colors = "4.2.3"
 reqwest = { version = "0.13.1", default-features = false, features = ["native-tls", "http2"] }
 resext = "0.7.0"
 scraper = "0.25.0"
+time-macros = "0.2.24"
+time = { version = "0.3.45", features = ["formatting", "macros", "local-offset"] }
 tokio = { version = "1.49.0", features = ["full"] }
 url = "2.5.8"

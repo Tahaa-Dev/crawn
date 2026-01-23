@@ -67,10 +67,7 @@ pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String 
 
 pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> String {
     if let Some(title) = document.select(title_selector).next() {
-        title.text()
-            .collect::<String>()
-            .trim()
-            .to_string()
+        title.text().collect::<String>().trim().to_string()
     } else {
         String::new()
     }

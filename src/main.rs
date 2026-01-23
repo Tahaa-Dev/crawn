@@ -17,12 +17,12 @@ pub(crate) use repo::*;
 pub(crate) static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
 
 #[tokio::main]
-async fn main() {
+async fn main() -> std::process::ExitCode {
     match crawn().await {
-        Ok(_) => {}
+        Ok(_) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{} {}", "FATAL:".red().bold(), e);
-            std::process::exit(1);
+            std::process::ExitCode::FAILURE
         }
     }
 }

@@ -80,8 +80,13 @@ pub(crate) async fn crawn() -> Res<()> {
             Some(&base_content),
         )
         .await
-        .with_context(|| format!("Failed to write output entry for base URL: {}", &args.url.bright_blue().italic()))
-        .log_err()
+        .with_context(|| {
+            format!(
+                "Failed to write output entry for base URL: {}",
+                &args.url.bright_blue().italic()
+            )
+        })
+        .log_err("[WARN]")
         .await?;
     } else {
         write_output(
@@ -92,26 +97,31 @@ pub(crate) async fn crawn() -> Res<()> {
             None,
         )
         .await
-        .with_context(|| format!("Failed to write output entry for base URL: {}", &args.url.bright_blue().italic()))
-        .log_err()
+        .with_context(|| {
+            format!(
+                "Failed to write output entry for base URL: {}",
+                &args.url.bright_blue().italic()
+            )
+        })
+        .log_err("[WARN]")
         .await?;
     }
 
     repo.add(String::from("M")).await?;
     depth += 1;
 
-    while let Some(Some(raw_url)) = repo.pop().await.log_err().await?
+    while let Some(Some(raw_url)) = repo.pop().await.log_err("[WARN]").await?
         && depth <= max_depth
     {
         if raw_url == "M" {
             depth += 1;
-            match_option!(repo.add(String::from("M")).await.log_err().await?);
+            match_option!(repo.add(String::from("M")).await.log_err("[WARN]").await?);
         } else {
             let url_opt = Url::parse(&raw_url)
                 .with_context(|| {
                     format!("Failed to parse URL: {}", &raw_url.bright_blue().italic())
                 })
-                .log_err()
+                .log_err("[WARN]")
                 .await?;
 
             let url = match_option!(url_opt);
@@ -124,7 +134,7 @@ pub(crate) async fn crawn() -> Res<()> {
                             "Failed to fetch URL: {}",
                             &raw_url.bright_blue().italic()
                         ))
-                        .log_err()
+                        .log_err("[WARN]")
                         .await?
                 );
 
@@ -137,7 +147,7 @@ pub(crate) async fn crawn() -> Res<()> {
                             "Failed to extract URLs from URL: {}",
                             &raw_url.bright_blue().italic()
                         ))
-                        .log_err()
+                        .log_err("[WARN]")
                         .await?
                 );
 
@@ -153,16 +163,22 @@ pub(crate) async fn crawn() -> Res<()> {
                     match_option!(
                         write_output(&raw_url, &title, links, text.as_deref(), Some(&content))
                             .await
-                            .with_context(|| format!("Failed to write output entry for URL: {}", &raw_url.bright_blue().italic()))
-                            .log_err()
+                            .with_context(|| format!(
+                                "Failed to write output entry for URL: {}",
+                                &raw_url.bright_blue().italic()
+                            ))
+                            .log_err("[WARN]")
                             .await?
                     );
                 } else {
                     match_option!(
                         write_output(&raw_url, &title, links, text.as_deref(), None)
                             .await
-                            .with_context(|| format!("Failed to write output entry for URL: {}", &raw_url.bright_blue().italic()))
-                            .log_err()
+                            .with_context(|| format!(
+                                "Failed to write output entry for URL: {}",
+                                &raw_url.bright_blue().italic()
+                            ))
+                            .log_err("[WARN]")
                             .await?
                     );
                 }
