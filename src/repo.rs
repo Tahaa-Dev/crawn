@@ -14,7 +14,7 @@ pub(crate) struct InMemoryRepo {
 }
 
 impl InMemoryRepo {
-    pub(crate) async fn new() -> Self {
+    pub(crate) fn new() -> Self {
         InMemoryRepo {
             urls: VecDeque::new(),
             visited: HashSet::new(),
@@ -46,7 +46,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inmemoryrepo() -> Res<()> {
-        let mut repo = InMemoryRepo::new().await;
+        let mut repo = InMemoryRepo::new();
 
         for i in 0..50 {
             repo.add(format!("https://example.com/index{}.html", i)).await.context("Failed to add URL to repo")?;

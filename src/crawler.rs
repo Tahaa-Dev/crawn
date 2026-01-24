@@ -18,7 +18,7 @@ pub(crate) async fn crawn() -> Res<()> {
 
     let mut curr_depth = 0u8;
 
-    let mut repo = InMemoryRepo::new().await;
+    let mut repo = InMemoryRepo::new();
 
     let base_url = Url::parse(&args.url).with_context(|| {
         format!(
