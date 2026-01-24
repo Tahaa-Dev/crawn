@@ -118,3 +118,19 @@ fn escape_json(s: &str, buf: &mut Vec<u8>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::output::escape_json;
+
+    #[test]
+    fn test_escaping() {
+        let mut buf = Vec::new();
+
+        let s = "escape\t string\r\nfor \x08 \\ testing \x0C\"escape\" function";
+
+        escape_json(s, &mut buf);
+
+        assert_eq!(buf, b"escape\\t string\\r\\nfor \\b \\\\ testing \\f\\\"escape\\\" function");
+    }
+}
