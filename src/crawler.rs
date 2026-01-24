@@ -243,7 +243,17 @@ fn should_crawl(base_domain: &str, base_keywords: &[String], other: &Url) -> boo
 
 // common stop words
 const STOP_WORDS: [&str; 11] = [
-    "how", "to", "the", "and", "for", "with", "from", "about", "by", "category", "catalogue",
+    "how",
+    "to",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "about",
+    "by",
+    "category",
+    "catalogue",
 ];
 
 fn get_keywords(url: &Url) -> Vec<String> {
@@ -269,15 +279,32 @@ fn get_keywords(url: &Url) -> Vec<String> {
 mod tests {
     use url::Url;
 
-    use crate::{crawler::get_keywords, error::{Res, ResExt}};
+    use crate::{
+        crawler::get_keywords,
+        error::{Res, ResExt},
+    };
 
     #[test]
     fn test_keyword_extraction() -> Res<()> {
-        let url = Url::parse("https://example.com/rust-programming-language/category/async/tokio/beginner_tutorial").context("Failed to parse URL")?;
+        let url = Url::parse(
+            "https://example.com/rust-programming-language/category/async/tokio/beginner_tutorial",
+        )
+        .context("Failed to parse URL")?;
 
         let kws = get_keywords(&url);
 
-        assert_eq!(kws, vec!["rust", "programming", "language", "async", "tokio", "beginner","tutorial"]);
+        assert_eq!(
+            kws,
+            vec![
+                "rust",
+                "programming",
+                "language",
+                "async",
+                "tokio",
+                "beginner",
+                "tutorial"
+            ]
+        );
 
         Ok(())
     }

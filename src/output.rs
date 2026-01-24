@@ -131,6 +131,9 @@ mod tests {
 
         escape_json(s, &mut buf);
 
-        assert_eq!(buf, b"escape\\t string\\r\\nfor \\b \\\\ testing \\f\\\"escape\\\" function");
+        assert_eq!(
+            buf,
+            b"escape\\t string\\r\\nfor \\b \\\\ testing \\f\\\"escape\\\" function"
+        );
     }
 }
