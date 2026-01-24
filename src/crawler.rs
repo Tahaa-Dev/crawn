@@ -13,9 +13,10 @@ use crate::{
 
 pub(crate) async fn crawn() -> Res<()> {
     let args = &*crate::ARGS;
-    let max_depth = args.depth.unwrap_or(4);
+    let max_depth = args.max_depth.unwrap_or(4);
+    let verbose = args.verbose;
 
-    let mut depth = 0u8;
+    let mut curr_depth = 0u8;
 
     let mut repo = InMemoryRepo::new().await;
 
@@ -63,6 +64,10 @@ pub(crate) async fn crawn() -> Res<()> {
         .await
         .context("Failed to extract URLs from base URL")?;
 
+    if verbose {
+        format!("Sent request to URL: {}", &args.url.bright_blue().italic()).log("[INFO]").await?;
+    }
+
     let base_title = extract_title(&base_document, &title_selector);
 
     let base_text: Option<String> = if args.include_text {
@@ -86,7 +91,7 @@ pub(crate) async fn crawn() -> Res<()> {
                 &args.url.bright_blue().italic()
             )
         })
-        .log_err("[WARN]")
+        .log("[WARN]")
         .await?;
     } else {
         write_output(
@@ -103,25 +108,25 @@ pub(crate) async fn crawn() -> Res<()> {
                 &args.url.bright_blue().italic()
             )
         })
-        .log_err("[WARN]")
+        .log("[WARN]")
         .await?;
     }
 
     repo.add(String::from("M")).await?;
-    depth += 1;
+    curr_depth += 1;
 
-    while let Some(Some(raw_url)) = repo.pop().await.log_err("[WARN]").await?
-        && depth <= max_depth
+    while let Some(Some(raw_url)) = repo.pop().await.log("[WARN]").await?
+        && curr_depth <= max_depth
     {
         if raw_url == "M" {
-            depth += 1;
-            match_option!(repo.add(String::from("M")).await.log_err("[WARN]").await?);
+            curr_depth += 1;
+            match_option!(repo.add(String::from("M")).await.log("[WARN]").await?);
         } else {
             let url_opt = Url::parse(&raw_url)
                 .with_context(|| {
                     format!("Failed to parse URL: {}", &raw_url.bright_blue().italic())
                 })
-                .log_err("[WARN]")
+                .log("[WARN]")
                 .await?;
 
             let url = match_option!(url_opt);
@@ -134,7 +139,7 @@ pub(crate) async fn crawn() -> Res<()> {
                             "Failed to fetch URL: {}",
                             &raw_url.bright_blue().italic()
                         ))
-                        .log_err("[WARN]")
+                        .log("[WARN]")
                         .await?
                 );
 
@@ -147,9 +152,13 @@ pub(crate) async fn crawn() -> Res<()> {
                             "Failed to extract URLs from URL: {}",
                             &raw_url.bright_blue().italic()
                         ))
-                        .log_err("[WARN]")
+                        .log("[WARN]")
                         .await?
                 );
+
+                if verbose {
+                    format!("Sent request to URL: {}", &raw_url.bright_blue().italic()).log("[INFO]").await?;
+                }
 
                 let title = extract_title(&document, &title_selector);
 
@@ -167,7 +176,7 @@ pub(crate) async fn crawn() -> Res<()> {
                                 "Failed to write output entry for URL: {}",
                                 &raw_url.bright_blue().italic()
                             ))
-                            .log_err("[WARN]")
+                            .log("[WARN]")
                             .await?
                     );
                 } else {
@@ -178,7 +187,7 @@ pub(crate) async fn crawn() -> Res<()> {
                                 "Failed to write output entry for URL: {}",
                                 &raw_url.bright_blue().italic()
                             ))
-                            .log_err("[WARN]")
+                            .log("[WARN]")
                             .await?
                     );
                 }

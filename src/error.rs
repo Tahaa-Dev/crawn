@@ -1,5 +1,6 @@
 use owo_colors::OwoColorize;
 use resext::ResExt;
+use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
 use tokio::{
     fs::{File, OpenOptions},
@@ -49,7 +50,7 @@ async fn init_logger() -> &'static Option<Mutex<File>> {
 }
 
 pub(crate) trait Log<T> {
-    async fn log_err(self, level: &str) -> Res<Option<T>>;
+    async fn log(self, level: &'static str) -> Res<Option<T>>;
 }
 
 const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
@@ -57,7 +58,7 @@ const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = fo
 );
 
 impl<T> Log<T> for Res<T> {
-    async fn log_err(self, level: &str) -> Res<Option<T>> {
+    async fn log(self, level: &'static str) -> Res<Option<T>> {
         match self {
             Ok(ok) => Ok(Some(ok)),
             Err(err) => {
@@ -72,7 +73,7 @@ impl<T> Log<T> for Res<T> {
                 if let Some(file) = init_logger().await {
                     let mut wtr = file.lock().await;
 
-                    let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
+                    let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(err.to_string()));
 
                     wtr.write_all(log.as_bytes())
                         .await
@@ -85,6 +86,31 @@ impl<T> Log<T> for Res<T> {
                     Ok(None)
                 }
             }
+        }
+    }
+}
+impl Log<String> for String {
+    async fn log(self, level: &'static str) -> Res<Option<String>> {
+        let timestamp: String = time::OffsetDateTime::now_utc()
+            .to_offset(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
+            .format(&LOG_TIMESTAMP_FORMAT)
+            .map_err(std::io::Error::other)
+            .context("Failed to format timestamp for log")?;
+
+        if let Some(file) = init_logger().await {
+            let mut wtr = file.lock().await;
+
+            let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(&self));
+
+            wtr.write_all(log.as_bytes())
+                .await
+                .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+
+            Ok(None)
+        } else {
+            eprint!("{} {}:\n{}\n\n", timestamp.yellow(), level.purple(), &self);
+
+            Ok(None)
         }
     }
 }

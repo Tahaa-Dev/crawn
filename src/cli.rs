@@ -32,5 +32,8 @@ pub struct Args {
     pub include_text: bool,
 
     #[arg(short, long, global = true)]
-    pub depth: Option<u8>,
+    pub max_depth: Option<u8>,
+
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
 }
