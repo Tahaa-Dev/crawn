@@ -73,7 +73,12 @@ impl<T> Log<T> for Res<T> {
                 if let Some(file) = init_logger().await {
                     let mut wtr = file.lock().await;
 
-                    let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(err.to_string()));
+                    let log = format!(
+                        "{} {}:\n{}\n\n",
+                        timestamp,
+                        level,
+                        strip_str(err.to_string())
+                    );
 
                     wtr.write_all(log.as_bytes())
                         .await

@@ -26,7 +26,21 @@ pub(crate) async fn crawn() -> Res<()> {
             &args.url.bright_blue().italic()
         )
     })?;
+
     let base_keywords = get_keywords(&base_url);
+
+    let base_domain = base_url.domain().unwrap_or_else(|| {
+        resext::panic_if!(
+            true,
+            || format!(
+                "FATAL: Base URL: {} does not contain a valid host domain",
+                base_url.as_str().bright_blue().italic()
+            ),
+            1
+        );
+
+        ""
+    });
 
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -65,7 +79,9 @@ pub(crate) async fn crawn() -> Res<()> {
         .context("Failed to extract URLs from base URL")?;
 
     if verbose {
-        format!("Sent request to URL: {}", &args.url.bright_blue().italic()).log("[INFO]").await?;
+        format!("Sent request to URL: {}", &args.url.bright_blue().italic())
+            .log("[INFO]")
+            .await?;
     }
 
     let base_title = extract_title(&base_document, &title_selector);
@@ -131,7 +147,7 @@ pub(crate) async fn crawn() -> Res<()> {
 
             let url = match_option!(url_opt);
 
-            if should_crawl(&base_url, &base_keywords, &url) {
+            if should_crawl(base_domain, &base_keywords, &url) {
                 let content = match_option!(
                     fetch_url(&raw_url, &client)
                         .await
@@ -157,7 +173,9 @@ pub(crate) async fn crawn() -> Res<()> {
                 );
 
                 if verbose {
-                    format!("Sent request to URL: {}", &raw_url.bright_blue().italic()).log("[INFO]").await?;
+                    format!("Sent request to URL: {}", &raw_url.bright_blue().italic())
+                        .log("[INFO]")
+                        .await?;
                 }
 
                 let title = extract_title(&document, &title_selector);
@@ -200,22 +218,13 @@ pub(crate) async fn crawn() -> Res<()> {
 
 const GENERICS: [&str; 3] = ["tutorial", "guide", "blog"];
 
-fn should_crawl(base_url: &Url, base_keywords: &[String], other: &Url) -> bool {
-    if let Some(domain) = base_url.domain() {
-        if let Some(other_domain) = other.domain() {
-            if other_domain != domain {
-                return false;
-            }
-        } else {
-            resext::panic_if!(
-                true,
-                || format!(
-                    "FATAL: Base URL: {} does not contain a valid host domain",
-                    base_url.as_str().bright_blue().italic()
-                ),
-                1
-            );
+fn should_crawl(base_domain: &str, base_keywords: &[String], other: &Url) -> bool {
+    if let Some(other_domain) = other.domain() {
+        if other_domain != base_domain {
+            return false;
         }
+    } else {
+        return false;
     }
 
     let other_keywords = get_keywords(other);
@@ -233,8 +242,8 @@ fn should_crawl(base_url: &Url, base_keywords: &[String], other: &Url) -> bool {
 }
 
 // common stop words
-const STOP_WORDS: [&str; 9] = [
-    "how", "to", "the", "and", "for", "with", "from", "about", "by",
+const STOP_WORDS: [&str; 11] = [
+    "how", "to", "the", "and", "for", "with", "from", "about", "by", "category", "catalogue",
 ];
 
 fn get_keywords(url: &Url) -> Vec<String> {
@@ -254,4 +263,22 @@ fn get_keywords(url: &Url) -> Vec<String> {
         })
         .map(|s| s.chars().filter(|c| c.is_ascii_alphanumeric()).collect())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use url::Url;
+
+    use crate::{crawler::get_keywords, error::{Res, ResExt}};
+
+    #[test]
+    fn test_keyword_extraction() -> Res<()> {
+        let url = Url::parse("https://example.com/rust-programming-language/category/async/tokio/beginner_tutorial").context("Failed to parse URL")?;
+
+        let kws = get_keywords(&url);
+
+        assert_eq!(kws, vec!["rust", "programming", "language", "async", "tokio", "beginner","tutorial"]);
+
+        Ok(())
+    }
 }
