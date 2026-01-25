@@ -23,7 +23,10 @@ pub(crate) async fn fetch_url(url: &str, client: &reqwest::Client) -> Res<String
     })?;
 
     // Use simple sleep for rate-limiting for MVP
-    tokio::time::sleep(tokio::time::Duration::from_millis(rand::random_range(200..500))).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(rand::random_range(
+        200..500,
+    )))
+    .await;
 
     Ok(text)
 }
