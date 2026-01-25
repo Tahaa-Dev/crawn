@@ -1,4 +1,4 @@
-# crawn
+<h1 align="center">crawn</h1>
 
 **Fast async web crawler with smart keyword filtering**
 
@@ -21,7 +21,12 @@
 
 ## Installation
 
-- Build from source:
+Run this command (requires cargo):
+```sh
+cargo install crawn
+```
+
+- Or build from source (requires cargo):
 ```sh
 git clone https://github.com/Tahaa-Dev/crawn.git
 cd crawn
@@ -88,28 +93,28 @@ Results are written as NDJSON (newline-delimited JSON):
 ## How It Works
 
 1. BFS Crawling:
-    - Starts at the seed URL (depth 0)
-    - Discovers links on each page
-    - Processes links level-by-level (breadth-first)
-    - Stops at max_depth (default: 4)
+- Starts at the seed URL (depth 0)
+- Discovers links on each page
+- Processes links level-by-level (breadth-first)
+- Stops at max_depth (default: 4)
 
 2. Keyword Filtering:
-    - Extracts "keywords" from URL paths (sanitized, lowercased)
-    - Splits by /, -, _ (e.g., /rust-tutorials/async → ["rust", "tutorials", "async"])
-    - Filters stop words, numbers, short words (<3 chars)
-    - Matches candidate URLs against base keywords
-    - Result: Only crawls relevant pages, skips off-topic content
+- Extracts "keywords" from URL paths (sanitized, lowercased)
+- Splits by /, -, _ (e.g., /rust-tutorials/async → ["rust", "tutorials", "async"])
+- Filters stop words, numbers, short words (<3 chars)
+- Matches candidate URLs against base keywords
+- Result: Only crawls relevant pages, skips off-topic content
 
 3. Rate Limiting:
-	- Random range between 200 - 500ms
-	- Prevents server overload and IP bans
-	- Configurable via code (not exposed as CLI flag yet)
+- Random range between 200 - 500ms
+- Prevents server overload and IP bans
+- Configurable via code (not exposed as CLI flag yet)
 
 4. Error Handling:
-	- Network errors: Logged as warnings, crawling continues
-	- HTTP 404/500: Skipped, logged as warnings
-	- Parse failures: Logged, returns empty JSON
-	- Fatal errors: Printed to stdout with full context chain
+- Network errors: Logged as warnings, crawling continues
+- HTTP 404/500: Skipped, logged as warnings
+- Parse failures: Logged, returns empty JSON
+- Fatal errors: Printed to stdout with full context chain
 
 ---
 
@@ -158,3 +163,10 @@ crawn -o shallow.ndjson -m 2 https://example.com
 - Same-domain only (no external links, by design)
 - No JavaScript rendering (static HTML only)
 - No authentication (public pages only)
+
+---
+
+## Notes
+
+- crawn is licensed under the <a href="LICENSE">MIT license</a>.
+- For specifics about contributing to fiux, see <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>.
