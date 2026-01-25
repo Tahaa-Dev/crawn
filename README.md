@@ -101,7 +101,7 @@ Results are written as NDJSON (newline-delimited JSON):
     - Result: Only crawls relevant pages, skips off-topic content
 
 3. Rate Limiting:
-	- Default: 10 requests/second (100ms sleep between requests)
+	- Random range between 200 - 500ms
 	- Prevents server overload and IP bans
 	- Configurable via code (not exposed as CLI flag yet)
 
