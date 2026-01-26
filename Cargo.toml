@@ -1,6 +1,6 @@
 [package]
 name = "crawn"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Taha Mahmoud <tahamahmoud7097@gmail.com>"]
 categories = ["asynchronous", "web-programming", "command-line-utilities", "network-programming", "web-programming::http-client"]
