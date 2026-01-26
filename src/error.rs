@@ -1,5 +1,5 @@
 use owo_colors::OwoColorize;
-use resext::ResExt;
+use resext::resext;
 use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
 use tokio::{
@@ -8,13 +8,12 @@ use tokio::{
     sync::{Mutex, OnceCell},
 };
 
-ResExt! {
-    pub(crate) enum CrawnError {
-        Io(std::io::Error),
-        Network(reqwest::Error),
-        UrlParsing(url::ParseError),
-        Scraping(scraper::error::SelectorErrorKind<'static>),
-    }
+#[resext]
+pub(crate) enum CrawnError {
+    Io(std::io::Error),
+    Network(reqwest::Error),
+    UrlParsing(url::ParseError),
+    Scraping(scraper::error::SelectorErrorKind<'static>),
 }
 
 enum Logger {

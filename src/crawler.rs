@@ -1,6 +1,9 @@
+use std::time::{Duration, Instant};
+
 use owo_colors::OwoColorize;
-use reqwest::Client;
+use reqwest::{Client, Response};
 use scraper::{Html, Selector};
+use tokio::{sync::Mutex, time::sleep};
 use url::Url;
 
 use crate::{
@@ -11,7 +14,46 @@ use crate::{
     output::write_output,
 };
 
-pub(crate) async fn crawn() -> Res<()> {
+pub(crate) struct CrawnClient {
+    client: Client,
+    last_req: Mutex<Instant>,
+}
+
+impl CrawnClient {
+    pub(crate) fn new() -> Res<Self> {
+        Ok(Self {
+            client: Client::builder()
+                .timeout(Duration::from_secs(10))
+                .pool_max_idle_per_host(10)
+                .build()
+                .context("Failed to build client")?,
+
+            last_req: Mutex::new(Instant::now()),
+        })
+    }
+
+    pub(crate) async fn get(&self, url: &str) -> Res<Response> {
+        let mut next_req = self.last_req.lock().await;
+
+        let now = Instant::now();
+        if now < *next_req {
+            sleep(*next_req - now).await;
+        }
+
+        let res = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()));
+
+        *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..=600));
+
+        res
+    }
+}
+
+pub(crate) async fn worker() -> Res<()> {
     let args = &*crate::ARGS;
     let max_depth = args.max_depth.unwrap_or(4);
     let verbose = args.verbose;
@@ -42,10 +84,7 @@ pub(crate) async fn crawn() -> Res<()> {
         ""
     });
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .context("Failed to build client")?;
+    let client = CrawnClient::new()?;
 
     let base_content = fetch_url(&args.url, &client)
         .await

@@ -4,16 +4,13 @@ use url::Url;
 
 use crate::{
     UrlRepo,
+    crawler::CrawnClient,
     error::{Res, ResExt},
 };
 
-pub(crate) async fn fetch_url(url: &str, client: &reqwest::Client) -> Res<String> {
+pub(crate) async fn fetch_url(url: &str, client: &CrawnClient) -> Res<String> {
     // Reuse reqwest::Client for performance
-    let res = client
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))?;
+    let res = client.get(url).await?;
 
     let text = res.text().await.with_context(|| {
         format!(
@@ -21,12 +18,6 @@ pub(crate) async fn fetch_url(url: &str, client: &reqwest::Client) -> Res<String
             url.bright_blue().italic()
         )
     })?;
-
-    // Use simple sleep for rate-limiting for MVP
-    tokio::time::sleep(tokio::time::Duration::from_millis(rand::random_range(
-        200..500,
-    )))
-    .await;
 
     Ok(text)
 }
