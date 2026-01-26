@@ -1,7 +1,7 @@
 <h1 align="center">crawn</h1>
 
-[<img alt="crates.io" src="https://img.shields.io/crates/v/crawn.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/resext)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-crawn-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/resext)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/crawn.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/crawn)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-crawn-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/crawn)
 [![CI](https://github.com/Tahaa-Dev/crawn/workflows/CI/badge.svg)](https://github.com/Tahaa-Dev/crawn/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
