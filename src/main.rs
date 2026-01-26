@@ -138,7 +138,6 @@ crawn is licensed under the **MIT** license.
 
 */
 
-
 use std::sync::LazyLock;
 
 use clap::Parser;

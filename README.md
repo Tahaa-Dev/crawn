@@ -144,3 +144,4 @@ crawn -o shallow.ndjson -m 2 https://example.com
 
 - crawn is licensed under the <a href="LICENSE">MIT license</a>.
 - For specifics about contributing to crawn, see <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>.
+- For new changes to crawn, see <a href="CHANGELOG.md">CHANGELOG.md</a>.

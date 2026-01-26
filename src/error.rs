@@ -4,7 +4,7 @@ use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
 use tokio::{
     fs::{File, OpenOptions},
-    io::AsyncWriteExt,
+    io::{AsyncWriteExt, Stdout, stdout},
     sync::{Mutex, OnceCell},
 };
 
@@ -17,9 +17,14 @@ ResExt! {
     }
 }
 
-static LOGGER: OnceCell<Option<Mutex<File>>> = OnceCell::const_new();
+enum Logger {
+    Stdout(Mutex<Stdout>),
+    File(Mutex<File>),
+}
 
-async fn init_logger() -> &'static Option<Mutex<File>> {
+static LOGGER: OnceCell<Logger> = OnceCell::const_new();
+
+async fn init_logger() -> &'static Logger {
     LOGGER
         .get_or_init(async || {
             let args = &*crate::ARGS;
@@ -41,9 +46,9 @@ async fn init_logger() -> &'static Option<Mutex<File>> {
                         1,
                     );
 
-                Some(Mutex::new(file))
+                Logger::File(Mutex::new(file))
             } else {
-                None
+                Logger::Stdout(Mutex::new(stdout()))
             }
         })
         .await
@@ -70,25 +75,38 @@ impl<T> Log<T> for Res<T> {
                     .map_err(std::io::Error::other)
                     .context("Failed to format timestamp for log")?;
 
-                if let Some(file) = init_logger().await {
-                    let mut wtr = file.lock().await;
+                let logger = init_logger().await;
 
-                    let log = format!(
-                        "{} {}:\n{}\n\n",
-                        timestamp,
-                        level,
-                        strip_str(err.to_string())
-                    );
+                match logger {
+                    Logger::File(mutex_wtr) => {
+                        let mut wtr = mutex_wtr.lock().await;
 
-                    wtr.write_all(log.as_bytes())
-                        .await
-                        .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                        let log = format!(
+                            "{} {}:\n{}\n\n",
+                            timestamp,
+                            level,
+                            strip_str(err.to_string())
+                        );
 
-                    Ok(None)
-                } else {
-                    eprint!("{} {}:\n{}\n\n", timestamp.yellow(), level.purple(), err);
+                        wtr.write_all(log.as_bytes())
+                            .await
+                            .with_context(|| format!("Failed to write log at: {}", timestamp))?;
 
-                    Ok(None)
+                        Ok(None)
+                    }
+
+                    Logger::Stdout(mutex_stdout) => {
+                        let mut stdout = mutex_stdout.lock().await;
+
+                        let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
+
+                        stdout
+                            .write_all(log.as_bytes())
+                            .await
+                            .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+
+                        Ok(None)
+                    }
                 }
             }
         }
@@ -102,20 +120,33 @@ impl Log<String> for String {
             .map_err(std::io::Error::other)
             .context("Failed to format timestamp for log")?;
 
-        if let Some(file) = init_logger().await {
-            let mut wtr = file.lock().await;
+        let logger = init_logger().await;
 
-            let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(&self));
+        match logger {
+            Logger::File(mutex_wtr) => {
+                let mut wtr = mutex_wtr.lock().await;
 
-            wtr.write_all(log.as_bytes())
-                .await
-                .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(self));
 
-            Ok(None)
-        } else {
-            eprint!("{} {}:\n{}\n\n", timestamp.yellow(), level.purple(), &self);
+                wtr.write_all(log.as_bytes())
+                    .await
+                    .with_context(|| format!("Failed to write log at: {}", timestamp))?;
 
-            Ok(None)
+                Ok(None)
+            }
+
+            Logger::Stdout(mutex_stdout) => {
+                let mut stdout = mutex_stdout.lock().await;
+
+                let log = format!("{} {}:\n{}\n\n", timestamp, level, self);
+
+                stdout
+                    .write_all(log.as_bytes())
+                    .await
+                    .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+
+                Ok(None)
+            }
         }
     }
 }
