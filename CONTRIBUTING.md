@@ -1,4 +1,4 @@
-# Contributing to fiux
+# Contributing to crawn
 
 Thanks for your interest in contributing!
 

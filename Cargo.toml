@@ -18,7 +18,7 @@ resext = "0.7.0"
 scraper = "0.25.0"
 time = { version = "0.3.45", features = ["formatting", "macros", "local-offset"] }
 time-macros = "0.2.24"
-tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "io-util", "sync", "fs"] }
+tokio = { version = "1.49.0", features = ["full"] }
 url = "2.5.8"
 strip-ansi-escapes = "0.2.1"
 rand = "0.9.2"

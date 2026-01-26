@@ -1,19 +1,21 @@
 <h1 align="center">crawn</h1>
 
-**Fast async web crawler with smart keyword filtering**
-
+[<img alt="crates.io" src="https://img.shields.io/crates/v/crawn.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/resext)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-crawn-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/resext)
 [![CI](https://github.com/Tahaa-Dev/crawn/workflows/CI/badge.svg)](https://github.com/Tahaa-Dev/crawn/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**A utility for web crawling and scraping**
 
 ---
 
 ## Features
 
-- **Blazing fast** – Built with Rust + tokio for async I/O
+- **Blazing fast** – Built with Rust & tokio for async I/O
 - **Smart filtering** – URL-based keyword matching (no content fetching required)
 - **NDJSON output** – One JSON object per line for easy streaming
 - **BFS crawling** – Depth-first traversal with configurable depth limits
-- **Rate limiting** – Configurable request rate (default: 10 req/sec)
+- **Rate limiting** – Configurable request rate (default: 2 - 5 req/sec)
 - **Error recovery** – Gracefully handles network errors and broken links
 - **Rich logging** – Colored, timestamped logs with context chains
 
@@ -78,43 +80,15 @@ Results are written as NDJSON (newline-delimited JSON):
 {"url":"https://example.com/contact","title":"Contact","depth":1}
 ```
 
-- With --include-text:
+- With `--include-text`:
 ```json
 {"url":"https://example.com","title":"Example Domain","depth":0,"text":"Example Domain\nThis domain is..."}
 ```
 
-- With --include-content:
+- With `--include-content`:
 ```json
 {"url":"https://example.com","title":"Example Domain","depth":0,"content":"<!DOCTYPE html>\n<html>..."}
 ```
-
----
-
-## How It Works
-
-1. BFS Crawling:
-- Starts at the seed URL (depth 0)
-- Discovers links on each page
-- Processes links level-by-level (breadth-first)
-- Stops at max_depth (default: 4)
-
-2. Keyword Filtering:
-- Extracts "keywords" from URL paths (sanitized, lowercased)
-- Splits by /, -, _ (e.g., /rust-tutorials/async → ["rust", "tutorials", "async"])
-- Filters stop words, numbers, short words (<3 chars)
-- Matches candidate URLs against base keywords
-- Result: Only crawls relevant pages, skips off-topic content
-
-3. Rate Limiting:
-- Random range between 200 - 500ms
-- Prevents server overload and IP bans
-- Configurable via code (not exposed as CLI flag yet)
-
-4. Error Handling:
-- Network errors: Logged as warnings, crawling continues
-- HTTP 404/500: Skipped, logged as warnings
-- Parse failures: Logged, returns empty JSON
-- Fatal errors: Printed to stdout with full context chain
 
 ---
 
@@ -169,4 +143,4 @@ crawn -o shallow.ndjson -m 2 https://example.com
 ## Notes
 
 - crawn is licensed under the <a href="LICENSE">MIT license</a>.
-- For specifics about contributing to fiux, see <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>.
+- For specifics about contributing to crawn, see <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>.
