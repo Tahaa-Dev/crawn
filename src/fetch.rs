@@ -1,20 +1,20 @@
+use std::sync::Arc;
+
 use owo_colors::OwoColorize;
 use scraper::{Html, Selector};
 use url::Url;
 
 use crate::{
-    UrlRepo,
     crawler::CrawnClient,
-    error::{Res, ResExt},
+    error::{Res, ResErr, ResExt},
 };
 
-pub(crate) async fn fetch_url(url: &str, client: &CrawnClient) -> Res<String> {
-    // Reuse reqwest::Client for performance
-    let res = client.get(url).await?;
+pub(crate) async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
+    let res = Arc::clone(&client).get(url).await?;
 
     let text = res.text().await.with_context(|| {
         format!(
-            "Failed to fetch HTML (text) from URL: {}",
+            "Failed to fetch HTML (content) from URL: {}",
             url.bright_blue().italic()
         )
     })?;
@@ -22,31 +22,25 @@ pub(crate) async fn fetch_url(url: &str, client: &CrawnClient) -> Res<String> {
     Ok(text)
 }
 
-pub(crate) async fn extract_links<R: UrlRepo>(
+pub(crate) fn extract_links(
     document: &Html,
-    repo: &mut R,
-    base: &Url,
+    base: Arc<Url>,
     anchor_selector: &Selector,
-) -> Res<usize> {
-    let mut res = 0usize;
+) -> Vec<Res<Url>> {
+    document
+        .select(anchor_selector)
+        .map(|anchor| {
+            let href = anchor.attr("href").ok_or_else(|| ResErr::new(b"Failed to extract URL from HTML anchor tag (link)".to_vec(), String::from("Failed to select 'href' from anchor tag")))?;
 
-    for url in document.select(anchor_selector) {
-        if let Some(href) = url.attr("href") {
-            let abs = base
-                .join(href.trim_end_matches('/'))
-                .with_context(|| format!("Failed to resolve relative URL: {}", href))?;
-
-            repo.add(normalize_url(abs)?).await?;
-
-            res += 1;
-        } else {
-            unreachable!()
-        }
-    }
-
-    Ok(res)
+            base.join(href).with_context(|| {
+                format!(
+                    "Failed to resolve relative URL: {}",
+                    href.bright_blue().italic()
+                )
+            })
+        })
+        .collect()
 }
-
 pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String {
     if let Some(body) = document.select(body_selector).next() {
         body.text()
@@ -88,11 +82,12 @@ fn normalize_url(mut url: Url) -> Res<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use scraper::{Html, Selector};
     use url::Url;
 
     use crate::{
-        InMemoryRepo, UrlRepo,
         error::{Res, ResExt},
         fetch::{extract_links, extract_text, extract_title, normalize_url},
     };
@@ -169,23 +164,20 @@ mod tests {
         let anchor_selector =
             Selector::parse("a[href]").context("Failed to parse selector for HTML anchor tag")?;
 
-        let mut repo = InMemoryRepo::new();
-
         let base = Url::parse("https://example.com/category/index.html")
             .context("Failed to parse base URL for testing resolving relative paths")?;
 
-        let links = extract_links(&document, &mut repo, &base, &anchor_selector)
-            .await
-            .context("Failed to extract links")?;
+        let links = extract_links(&document, Arc::new(base), &anchor_selector);
 
-        assert_eq!(links, 2);
         assert_eq!(
-            repo.pop().await?.unwrap(),
-            "https://example.com/category/path/to/page/index.html"
-        );
-        assert_eq!(
-            repo.pop().await?.unwrap(),
-            "https://example.com/path/to/another/page/index.html"
+            links
+                .iter()
+                .map(move |link| link.as_ref().unwrap().clone())
+                .collect::<Vec<Url>>(),
+            vec![
+                Url::parse("https://example.com/category/path/to/page/index.html").unwrap(),
+                Url::parse("https://example.com/path/to/another/page/index.html").unwrap()
+            ]
         );
 
         Ok(())

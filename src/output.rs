@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use owo_colors::OwoColorize;
 use resext::panic_if;
 use tokio::{
@@ -54,52 +56,54 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
 }
 
 pub(crate) async fn write_output(
-    url: &str,
-    title: &str,
+    url: Arc<String>,
+    title: String,
     links: usize,
-    text: Option<&str>,
-    content: Option<&str>,
+    text: Option<String>,
+    content: Option<String>,
 ) -> Res<()> {
-    let mut wtr = init_writer().await.lock().await;
+    let line = tokio::task::spawn_blocking(move || {
+        let mut buf = Vec::with_capacity(256);
+        let mut line = Vec::with_capacity(text.as_ref().map_or(1024, |t| t.len() + 512));
 
-    let mut esc_buf = Vec::new();
+        line.extend_from_slice(b"{\"URL\": \"");
+        escape_json(&*url, &mut buf);
+        line.extend_from_slice(&buf);
 
-    wtr.write_all(b"{\"URL\": \"").await?;
-    escape_json(url, &mut esc_buf);
-    wtr.write_all(esc_buf.as_slice()).await?;
+        line.extend_from_slice(b"\", \"Title\": \"");
+        escape_json(title, &mut buf);
+        line.extend_from_slice(&buf);
 
-    wtr.write_all(b"\", \"Title\": \"").await?;
-    escape_json(title, &mut esc_buf);
-    wtr.write_all(esc_buf.as_slice()).await?;
+        line.extend_from_slice(b"\", \"Links\": ");
+        line.extend_from_slice(links.to_string().as_bytes());
 
-    wtr.write_all(b"\", \"Links\": ").await?;
-    wtr.write_all(links.to_string().as_bytes()).await?;
+        if let Some(t) = text {
+            line.extend_from_slice(b", \"Text\": \"");
+            escape_json(t, &mut buf);
+            line.extend_from_slice(&buf);
+            line.extend_from_slice(b"\"}\n");
+        } else if let Some(c) = content {
+            line.extend_from_slice(b", \"Content\": \"");
+            escape_json(c, &mut buf);
+            line.extend_from_slice(&buf);
+            line.extend_from_slice(b"\"}\n");
+        } else {
+            line.extend_from_slice(b"}\n");
+        }
+        
+        line
+    }).await.context("Failed to escape output concurrently")?;
 
-    if let Some(text) = text {
-        wtr.write_all(b", \"Text\": \"").await?;
-        escape_json(text, &mut esc_buf);
-        wtr.write_all(esc_buf.as_slice()).await?;
-        wtr.write_all(b"\"").await?;
-    }
+    init_writer().await.lock().await.write_all(&line).await.context("Failed to write output entry into output file")?;
 
-    if let Some(content) = content {
-        wtr.write_all(b", \"Content\": \"").await?;
-        escape_json(content, &mut esc_buf);
-        wtr.write_all(esc_buf.as_slice()).await?;
-        wtr.write_all(b"\"}\n").await?;
-    } else {
-        wtr.write_all(b"}\n").await?;
-    }
-
-    wtr.flush()
-        .await
-        .context("Failed to flush writer into output file")
+    Ok(())
 }
 
-fn escape_json(s: &str, buf: &mut Vec<u8>) {
+#[inline(always)]
+fn escape_json<S: AsRef<str>>(s: S, buf: &mut Vec<u8>) {
     buf.clear();
 
-    for byte in s.bytes() {
+    for byte in s.as_ref().bytes() {
         match byte {
             b'"' => buf.extend_from_slice(b"\\\""),
             b'\\' => buf.extend_from_slice(b"\\\\"),
@@ -121,18 +125,22 @@ fn escape_json(s: &str, buf: &mut Vec<u8>) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use tokio::sync::Mutex;
+
     use crate::output::escape_json;
 
-    #[test]
-    fn test_escaping() {
+    #[tokio::test]
+    async fn test_escaping() {
         let mut buf = Vec::new();
 
         let s = "escape\t string\r\nfor \x08 \\ testing \x0C\"escape\" function";
 
-        escape_json(s, &mut buf);
+        escape_json(s.to_string(), &mut buf);
 
         assert_eq!(
-            buf,
+            &buf,
             b"escape\\t string\\r\\nfor \\b \\\\ testing \\f\\\"escape\\\" function"
         );
     }

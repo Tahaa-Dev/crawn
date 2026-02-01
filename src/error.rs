@@ -8,13 +8,24 @@ use tokio::{
     sync::{Mutex, OnceCell},
 };
 
-#[resext]
+#[resext(
+    msg_delimiter = " • ",
+    source_prefix = "Cause: ",
+    include_variant = true
+)]
 pub(crate) enum CrawnError {
-    Io(std::io::Error),
-    Network(reqwest::Error),
-    UrlParsing(url::ParseError),
-    Scraping(scraper::error::SelectorErrorKind<'static>),
+    IoError(std::io::Error),
+    NetworkError(reqwest::Error),
+    UrlParseError(url::ParseError),
+    ScrapeError(scraper::error::SelectorErrorKind<'static>),
+    ConcurrentTaskFailure(tokio::task::JoinError),
+    Custom(String),
 }
+
+unsafe impl Send for CrawnError {}
+unsafe impl Sync for CrawnError {}
+unsafe impl Send for ResErr {}
+unsafe impl Sync for ResErr {}
 
 enum Logger {
     Stdout(Mutex<Stdout>),

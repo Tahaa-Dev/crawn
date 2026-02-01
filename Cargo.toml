@@ -15,7 +15,7 @@ clap = { version = "4.5.54", features = ["derive"] }
 owo-colors = "4.2.3"
 reqwest = { version = "0.13.1", default-features = false, features = ["native-tls", "http2"] }
 resext = "0.8.1"
-scraper = "0.25.0"
+scraper = { version = "0.25.0", features = ["atomic"] }
 time = { version = "0.3.45", features = ["formatting", "macros", "local-offset"] }
 time-macros = "0.2.24"
 tokio = { version = "1.49.0", features = ["full"] }

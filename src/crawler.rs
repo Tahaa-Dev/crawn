@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use owo_colors::OwoColorize;
 use reqwest::{Client, Response};
@@ -7,7 +10,7 @@ use tokio::{sync::Mutex, time::sleep};
 use url::Url;
 
 use crate::{
-    InMemoryRepo, UrlRepo,
+    UrlRepo,
     error::{Log, Res, ResExt},
     fetch::*,
     match_option,
@@ -53,211 +56,76 @@ impl CrawnClient {
     }
 }
 
-pub(crate) async fn worker() -> Res<()> {
+pub(crate) struct Selectors {
+    anchor: Selector,
+    title: Selector,
+    body: Option<Selector>,
+}
+
+pub(crate) async fn worker<R: UrlRepo>(
+    repo: Arc<Mutex<R>>,
+    selectors: Arc<Selectors>,
+    client: Arc<CrawnClient>,
+    url: Arc<String>,
+) -> Res<()> {
     let args = &*crate::ARGS;
-    let max_depth = args.max_depth.unwrap_or(4);
-    let verbose = args.verbose;
+    let url = Arc::clone(&url);
 
-    let mut curr_depth = 0u8;
+    let client = Arc::clone(&client);
 
-    let mut repo = InMemoryRepo::new();
+    let base = Url::parse(&url)
+        .with_context(|| format!("Failed to parse URL: {}", &url.italic().bright_blue()))?;
 
-    let base_url = Url::parse(&args.url).with_context(|| {
-        format!(
-            "Failed to parse base URL: {}",
-            &args.url.bright_blue().italic()
-        )
-    })?;
+    let content = fetch_url(&*url, client).await?;
 
-    let base_keywords = get_keywords(&base_url);
+    let (links, title, text, content) = {
+        let selectors = Arc::clone(&selectors);
+        let mut link_count = 0usize;
 
-    let base_domain = base_url.domain().unwrap_or_else(|| {
-        resext::panic_if!(
-            true,
-            || format!(
-                "FATAL: Base URL: {} does not contain a valid host domain",
-                base_url.as_str().bright_blue().italic()
-            ),
-            1
-        );
+        let task = tokio::task::spawn_blocking(move || {
+            let doc = Html::parse_document(&content);
+            let links = extract_links(&doc, Arc::new(base), &selectors.anchor);
 
-        ""
-    });
+            let text = match &selectors.body {
+                None => None,
+                Some(body_selector) => Some(extract_text(&doc, body_selector)),
+            };
 
-    let client = CrawnClient::new()?;
+            let title = extract_title(&doc, &selectors.title);
 
-    let base_content = fetch_url(&args.url, &client)
-        .await
-        .context("Failed to fetch base URL")?;
+            (text, title, links, if args.include_content { Some(content) } else { None })
+        });
 
-    let body_selector = Selector::parse("body").with_context(|| {
-        format!(
-            "Failed to parse selector for HTML body tag: {}",
-            "`<body>`".yellow()
-        )
-    })?;
+        let (text, title, links, content) = task
+            .await
+            .context("Failed to extract links and text from HTML body concurrently")?;
 
-    let anchor_selector = Selector::parse("a[href]").with_context(|| {
-        format!(
-            "Failed to parse selector for HTML anchor (link) tag: {}",
-            "`<a href=\"URL\">`".yellow()
-        )
-    })?;
+        {
+            let temp = Arc::clone(&repo);
+            let mut rp = temp.lock().await;
 
-    let title_selector = Selector::parse("title").with_context(|| {
-        format!(
-            "Failed to parse selector for HTML title tag: {}",
-            "`<title>`".yellow()
-        )
-    })?;
+            for link in links {
+                let link = match_option!(link.log("[WARN]").await?);
 
-    let base_document = Html::parse_document(&base_content);
+                match_option!(rp.add(link.to_string()).await.log("[WARN]").await?);
 
-    let base_links = extract_links(&base_document, &mut repo, &base_url, &anchor_selector)
-        .await
-        .context("Failed to extract URLs from base URL")?;
-
-    if verbose {
-        format!("Sent request to URL: {}", &args.url.bright_blue().italic())
-            .log("[INFO]")
-            .await?;
-    }
-
-    let base_title = extract_title(&base_document, &title_selector);
-
-    let base_text: Option<String> = if args.include_text {
-        Some(extract_text(&base_document, &body_selector))
-    } else {
-        None
-    };
-
-    if args.include_content {
-        write_output(
-            &args.url,
-            &base_title,
-            base_links,
-            base_text.as_deref(),
-            Some(&base_content),
-        )
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to write output entry for base URL: {}",
-                &args.url.bright_blue().italic()
-            )
-        })
-        .log("[WARN]")
-        .await?;
-    } else {
-        write_output(
-            &args.url,
-            &base_title,
-            base_links,
-            base_text.as_deref(),
-            None,
-        )
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to write output entry for base URL: {}",
-                &args.url.bright_blue().italic()
-            )
-        })
-        .log("[WARN]")
-        .await?;
-    }
-
-    repo.add(String::from("M")).await?;
-    curr_depth += 1;
-
-    while let Some(Some(raw_url)) = repo.pop().await.log("[WARN]").await?
-        && curr_depth <= max_depth
-    {
-        if raw_url == "M" {
-            curr_depth += 1;
-            match_option!(repo.add(String::from("M")).await.log("[WARN]").await?);
-        } else {
-            let url_opt = Url::parse(&raw_url)
-                .with_context(|| {
-                    format!("Failed to parse URL: {}", &raw_url.bright_blue().italic())
-                })
-                .log("[WARN]")
-                .await?;
-
-            let url = match_option!(url_opt);
-
-            if should_crawl(base_domain, &base_keywords, &url) {
-                let content = match_option!(
-                    fetch_url(&raw_url, &client)
-                        .await
-                        .with_context(|| format!(
-                            "Failed to fetch URL: {}",
-                            &raw_url.bright_blue().italic()
-                        ))
-                        .log("[WARN]")
-                        .await?
-                );
-
-                let document = Html::parse_document(&content);
-
-                let links = match_option!(
-                    extract_links(&document, &mut repo, &url, &anchor_selector)
-                        .await
-                        .with_context(|| format!(
-                            "Failed to extract URLs from URL: {}",
-                            &raw_url.bright_blue().italic()
-                        ))
-                        .log("[WARN]")
-                        .await?
-                );
-
-                if verbose {
-                    format!("Sent request to URL: {}", &raw_url.bright_blue().italic())
-                        .log("[INFO]")
-                        .await?;
-                }
-
-                let title = extract_title(&document, &title_selector);
-
-                let text: Option<String> = if args.include_text {
-                    Some(extract_text(&document, &body_selector))
-                } else {
-                    None
-                };
-
-                if args.include_content {
-                    match_option!(
-                        write_output(&raw_url, &title, links, text.as_deref(), Some(&content))
-                            .await
-                            .with_context(|| format!(
-                                "Failed to write output entry for URL: {}",
-                                &raw_url.bright_blue().italic()
-                            ))
-                            .log("[WARN]")
-                            .await?
-                    );
-                } else {
-                    match_option!(
-                        write_output(&raw_url, &title, links, text.as_deref(), None)
-                            .await
-                            .with_context(|| format!(
-                                "Failed to write output entry for URL: {}",
-                                &raw_url.bright_blue().italic()
-                            ))
-                            .log("[WARN]")
-                            .await?
-                    );
-                }
+                link_count += 1;
             }
         }
-    }
+
+        (link_count, title, text, content)
+    };
+
+    write_output(url, title, links, text, content)
+        .await
+        .context("Failed to write output entry for URL")?;
 
     Ok(())
 }
 
 const GENERICS: [&str; 3] = ["tutorial", "guide", "blog"];
 
-fn should_crawl(base_domain: &str, base_keywords: &[String], other: &Url) -> bool {
+pub(crate) fn should_crawl(base_domain: &str, base_keywords: &[String], other: &Url) -> bool {
     if let Some(other_domain) = other.domain() {
         if other_domain != base_domain {
             return false;
@@ -295,7 +163,7 @@ const STOP_WORDS: [&str; 11] = [
     "catalogue",
 ];
 
-fn get_keywords(url: &Url) -> Vec<String> {
+pub(crate) fn get_keywords(url: &Url) -> Vec<String> {
     let mut url = url.clone();
 
     url.set_query(None);
