@@ -138,7 +138,9 @@ crawn is licensed under the **MIT** license.
 
 */
 
+use std::sync::atomic::{AtomicU8, AtomicUsize};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use clap::Parser;
 use owo_colors::OwoColorize;
@@ -157,17 +159,199 @@ pub(crate) use repo::*;
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::error::{CrawnError, Log, Res, ResExt};
-use crate::output::write_output;
+use crate::error::{Log, Res, ResExt};
+use crate::output::{flush_writer, write_output};
 
 pub(crate) static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
 
 async fn run() -> Res<()> {
     let args = &*ARGS;
     let repo = Arc::new(Mutex::new(InMemoryRepo::new()));
-    let client = Arc::new(CrawnClient::new());
+    let client = Arc::new(CrawnClient::new()?);
+    let curr_depth = Arc::new(AtomicU8::new(0));
+    let pending = Arc::new(AtomicUsize::new(0));
+    let url = &args.url;
+    let base = Url::parse(url).context("Failed to parse base URL")?;
 
-    Ok(())
+    let base_keywords = Arc::new(get_keywords(&base));
+
+    let base_domain = Arc::new(base.domain().unwrap_or_default().to_owned());
+
+    let selectors = Arc::new(Selectors {
+        anchor: Selector::parse("a[href]").with_context(|| {
+            format!(
+                "Failed to parse selector for HTML 'anchor' (link) tag: {}",
+                "`<a href=\"URL\">`".yellow()
+            )
+        })?,
+
+        title: Selector::parse("title").with_context(|| {
+            format!(
+                "Failed to parse selector for HTML 'title' tag: {}",
+                "`<title>`".yellow()
+            )
+        })?,
+
+        body: if args.include_text {
+            Some(Selector::parse("body").with_context(|| {
+                format!(
+                    "Failed to parse selector for HTML 'body' tag: {}",
+                    "`<body>`".yellow()
+                )
+            })?)
+        } else {
+            None
+        },
+    });
+
+    let content = fetch_url(url, Arc::clone(&client)).await?;
+
+    if args.verbose {
+        String::from("Sent request to base URL")
+            .log("[INFO]")
+            .await?;
+    }
+
+    let doc = Html::parse_document(&content);
+
+    let links = extract_links(&doc, Arc::new(base), &selectors.anchor);
+    let mut link_count = 0usize;
+    {
+        let mut rp = repo.lock().await;
+
+        for link in links {
+            let link = match_option!(link.log("[WARN]").await?);
+            let link = normalize_url(link)?;
+
+            match_option!(rp.add(link).await.log("[WARN]").await?);
+
+            link_count += 1;
+        }
+        rp.add(String::from("M")).await?;
+    }
+
+    let text = selectors
+        .body
+        .as_ref()
+        .map(|body_selector| extract_text(&doc, body_selector));
+    let title = extract_title(&doc, &selectors.title);
+
+    let content = if args.include_content {
+        Some(content)
+    } else {
+        None
+    };
+
+    write_output(url.clone(), title, link_count, text, content)
+        .await
+        .log("[WARN]")
+        .await?;
+
+    let task_count = if args.include_content || args.include_text {
+        6
+    } else {
+        9
+    };
+
+    let mut tasks = Vec::new();
+    for _ in 0..task_count {
+        let repo = Arc::clone(&repo);
+        let base_keywords = Arc::clone(&base_keywords);
+        let base_domain = Arc::clone(&base_domain);
+        let selectors = Arc::clone(&selectors);
+        let client = Arc::clone(&client);
+        let curr_depth = Arc::clone(&curr_depth);
+        let pending = Arc::clone(&pending);
+
+        let task: tokio::task::JoinHandle<Res<()>> = tokio::task::spawn(async move {
+            loop {
+                if curr_depth.load(std::sync::atomic::Ordering::SeqCst)
+                    > args.max_depth.unwrap_or(4)
+                {
+                    break;
+                }
+
+                let work_item = {
+                    let mut repo_guard = repo.lock().await;
+                    repo_guard.pop().await.log("[WARN]").await?.unwrap_or(None)
+                };
+                match work_item {
+                    None => {
+                        if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    Some(url) => {
+                        if &url == "M" {
+                            if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+                                #[allow(clippy::unit_arg)]
+                                repo.lock()
+                                    .await
+                                    .kick(url)
+                                    .await
+                                    .log("[WARN]")
+                                    .await?
+                                    .unwrap_or({
+                                        tokio::time::sleep(Duration::from_millis(100)).await;
+                                    });
+
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                            } else {
+                                repo.lock()
+                                    .await
+                                    .add(url)
+                                    .await
+                                    .log("[WARN]")
+                                    .await?
+                                    .unwrap_or_default();
+
+                                curr_depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            }
+                        } else {
+                            pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                            let other = Url::parse(&url).with_context(|| {
+                                format!("Failed to parse URL: {}", &url.bright_blue().italic())
+                            })?;
+
+                            if should_crawl(
+                                Arc::clone(&base_domain),
+                                Arc::clone(&base_keywords),
+                                &other,
+                            ) {
+                                match_option!(
+                                    worker(
+                                        Arc::clone(&repo),
+                                        Arc::clone(&selectors),
+                                        Arc::clone(&client),
+                                        url,
+                                    )
+                                    .await
+                                    .log("[WARN]")
+                                    .await?
+                                );
+                            }
+
+                            pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        });
+
+        tasks.push(task);
+    }
+
+    for task in tasks {
+        task.await.context("Failed to spawn concurrent worker")??;
+    }
+
+    flush_writer().await
 }
 
 #[tokio::main]

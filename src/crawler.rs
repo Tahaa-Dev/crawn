@@ -1,5 +1,6 @@
 use std::{
-    sync::Arc,
+    collections::HashSet,
+    sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
 
@@ -27,7 +28,6 @@ impl CrawnClient {
         Ok(Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(10))
-                .pool_max_idle_per_host(10)
                 .build()
                 .context("Failed to build client")?,
 
@@ -36,47 +36,59 @@ impl CrawnClient {
     }
 
     pub(crate) async fn get(&self, url: &str) -> Res<Response> {
-        let mut next_req = self.last_req.lock().await;
+        let wait_duration = {
+            let mut last_req = self.last_req.lock().await;
+            let now = Instant::now();
 
-        let now = Instant::now();
-        if now < *next_req {
-            sleep(*next_req - now).await;
+            let wait = if now < *last_req {
+                *last_req - now
+            } else {
+                Duration::ZERO
+            };
+
+            *last_req =
+                Instant::now() + wait + Duration::from_millis(rand::random_range(300..=600));
+
+            wait
+        };
+
+        if !wait_duration.is_zero() {
+            sleep(wait_duration).await;
         }
 
-        let res = self
-            .client
+        self.client
             .get(url)
             .send()
             .await
-            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()));
-
-        *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..=600));
-
-        res
+            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
     }
 }
 
 pub(crate) struct Selectors {
-    anchor: Selector,
-    title: Selector,
-    body: Option<Selector>,
+    pub(crate) anchor: Selector,
+    pub(crate) title: Selector,
+    pub(crate) body: Option<Selector>,
 }
 
 pub(crate) async fn worker<R: UrlRepo>(
     repo: Arc<Mutex<R>>,
     selectors: Arc<Selectors>,
     client: Arc<CrawnClient>,
-    url: Arc<String>,
+    url: String,
 ) -> Res<()> {
     let args = &*crate::ARGS;
-    let url = Arc::clone(&url);
-
     let client = Arc::clone(&client);
 
     let base = Url::parse(&url)
         .with_context(|| format!("Failed to parse URL: {}", &url.italic().bright_blue()))?;
 
-    let content = fetch_url(&*url, client).await?;
+    let content = fetch_url(&url, client).await?;
+
+    if args.verbose {
+        format!("Sent request to URL: {}", &url.bright_blue().italic())
+            .log("[INFO]")
+            .await?;
+    }
 
     let (links, title, text, content) = {
         let selectors = Arc::clone(&selectors);
@@ -86,14 +98,22 @@ pub(crate) async fn worker<R: UrlRepo>(
             let doc = Html::parse_document(&content);
             let links = extract_links(&doc, Arc::new(base), &selectors.anchor);
 
-            let text = match &selectors.body {
-                None => None,
-                Some(body_selector) => Some(extract_text(&doc, body_selector)),
-            };
-
+            let text = selectors
+                .body
+                .as_ref()
+                .map(|body_selector| extract_text(&doc, body_selector));
             let title = extract_title(&doc, &selectors.title);
 
-            (text, title, links, if args.include_content { Some(content) } else { None })
+            (
+                text,
+                title,
+                links,
+                if args.include_content {
+                    Some(content)
+                } else {
+                    None
+                },
+            )
         });
 
         let (text, title, links, content) = task
@@ -106,8 +126,9 @@ pub(crate) async fn worker<R: UrlRepo>(
 
             for link in links {
                 let link = match_option!(link.log("[WARN]").await?);
+                let link = normalize_url(link)?;
 
-                match_option!(rp.add(link.to_string()).await.log("[WARN]").await?);
+                match_option!(rp.add(link).await.log("[WARN]").await?);
 
                 link_count += 1;
             }
@@ -123,11 +144,16 @@ pub(crate) async fn worker<R: UrlRepo>(
     Ok(())
 }
 
-const GENERICS: [&str; 3] = ["tutorial", "guide", "blog"];
+static GENERICS: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| HashSet::from(["tutorial", "guide", "blog"]));
 
-pub(crate) fn should_crawl(base_domain: &str, base_keywords: &[String], other: &Url) -> bool {
+pub(crate) fn should_crawl(
+    base_domain: Arc<String>,
+    base_keywords: Arc<HashSet<String>>,
+    other: &Url,
+) -> bool {
     if let Some(other_domain) = other.domain() {
-        if other_domain != base_domain {
+        if other_domain != base_domain.as_str() {
             return false;
         }
     } else {
@@ -138,7 +164,7 @@ pub(crate) fn should_crawl(base_domain: &str, base_keywords: &[String], other: &
 
     let match_count = other_keywords
         .iter()
-        .filter(|kw| base_keywords.contains(kw) || GENERICS.contains(&kw.as_str()))
+        .filter(|kw| base_keywords.contains(kw.as_str()) || GENERICS.contains(&kw.as_str()))
         .count();
 
     if match_count >= 2 {
@@ -149,21 +175,23 @@ pub(crate) fn should_crawl(base_domain: &str, base_keywords: &[String], other: &
 }
 
 // common stop words
-const STOP_WORDS: [&str; 11] = [
-    "how",
-    "to",
-    "the",
-    "and",
-    "for",
-    "with",
-    "from",
-    "about",
-    "by",
-    "category",
-    "catalogue",
-];
+static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "how",
+        "to",
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "about",
+        "by",
+        "category",
+        "catalogue",
+    ])
+});
 
-pub(crate) fn get_keywords(url: &Url) -> Vec<String> {
+pub(crate) fn get_keywords(url: &Url) -> HashSet<String> {
     let mut url = url.clone();
 
     url.set_query(None);
@@ -184,6 +212,8 @@ pub(crate) fn get_keywords(url: &Url) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use url::Url;
 
     use crate::{
@@ -202,15 +232,15 @@ mod tests {
 
         assert_eq!(
             kws,
-            vec![
-                "rust",
-                "programming",
-                "language",
-                "async",
-                "tokio",
-                "beginner",
-                "tutorial"
-            ]
+            HashSet::from([
+                "rust".to_string(),
+                "programming".to_string(),
+                "language".to_string(),
+                "async".to_string(),
+                "tokio".to_string(),
+                "beginner".to_string(),
+                "tutorial".to_string()
+            ])
         );
 
         Ok(())

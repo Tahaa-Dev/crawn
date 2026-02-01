@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use owo_colors::OwoColorize;
 use resext::panic_if;
 use tokio::{
@@ -49,14 +47,31 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
                     },
                     1,
                 );
+            let buf_cap = if args.include_content {
+                1024 * 16
+            } else if args.include_text {
+                1024 * 4
+            } else {
+                256
+            };
 
-            Mutex::new(BufWriter::with_capacity(512, file))
+            Mutex::new(BufWriter::with_capacity(buf_cap, file))
         })
         .await
 }
 
+pub(crate) async fn flush_writer() -> Res<()> {
+    init_writer()
+        .await
+        .lock()
+        .await
+        .flush()
+        .await
+        .context("Failed to flush writer into output file")
+}
+
 pub(crate) async fn write_output(
-    url: Arc<String>,
+    url: String,
     title: String,
     links: usize,
     text: Option<String>,
@@ -90,11 +105,19 @@ pub(crate) async fn write_output(
         } else {
             line.extend_from_slice(b"}\n");
         }
-        
-        line
-    }).await.context("Failed to escape output concurrently")?;
 
-    init_writer().await.lock().await.write_all(&line).await.context("Failed to write output entry into output file")?;
+        line
+    })
+    .await
+    .context("Failed to escape output concurrently")?;
+
+    init_writer()
+        .await
+        .lock()
+        .await
+        .write_all(&line)
+        .await
+        .context("Failed to write output entry into output file")?;
 
     Ok(())
 }
@@ -125,10 +148,6 @@ fn escape_json<S: AsRef<str>>(s: S, buf: &mut Vec<u8>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use tokio::sync::Mutex;
-
     use crate::output::escape_json;
 
     #[tokio::test]
@@ -137,7 +156,7 @@ mod tests {
 
         let s = "escape\t string\r\nfor \x08 \\ testing \x0C\"escape\" function";
 
-        escape_json(s.to_string(), &mut buf);
+        escape_json(s, &mut buf);
 
         assert_eq!(
             &buf,

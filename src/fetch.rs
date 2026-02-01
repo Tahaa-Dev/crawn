@@ -30,7 +30,12 @@ pub(crate) fn extract_links(
     document
         .select(anchor_selector)
         .map(|anchor| {
-            let href = anchor.attr("href").ok_or_else(|| ResErr::new(b"Failed to extract URL from HTML anchor tag (link)".to_vec(), String::from("Failed to select 'href' from anchor tag")))?;
+            let href = anchor.attr("href").ok_or_else(|| {
+                ResErr::new(
+                    b"Failed to extract URL from HTML anchor tag (link)".to_vec(),
+                    String::from("Failed to select 'href' from anchor tag"),
+                )
+            })?;
 
             base.join(href).with_context(|| {
                 format!(
@@ -61,11 +66,7 @@ pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> Strin
     }
 }
 
-fn normalize_url(mut url: Url) -> Res<String> {
-    if url.scheme() == "http" {
-        url.set_scheme("https").unwrap_or(());
-    }
-
+pub(crate) fn normalize_url(mut url: Url) -> Res<String> {
     if let Some(domain) = url.domain() {
         let res = url.set_host(Some(&domain.to_lowercase()));
         res.context("Failed to set host domain for URL")?;

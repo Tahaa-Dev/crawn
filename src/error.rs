@@ -1,4 +1,4 @@
-use owo_colors::OwoColorize;
+use owo_colors::{OwoColorize, colors::css::DarkSlateBlue};
 use resext::resext;
 use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
@@ -18,7 +18,7 @@ pub(crate) enum CrawnError {
     NetworkError(reqwest::Error),
     UrlParseError(url::ParseError),
     ScrapeError(scraper::error::SelectorErrorKind<'static>),
-    ConcurrentTaskFailure(tokio::task::JoinError),
+    ConcurrentTaskError(tokio::task::JoinError),
     Custom(String),
 }
 
@@ -108,7 +108,12 @@ impl<T> Log<T> for Res<T> {
                     Logger::Stdout(mutex_stdout) => {
                         let mut stdout = mutex_stdout.lock().await;
 
-                        let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
+                        let log = format!(
+                            "{} {}:\n{}\n\n",
+                            timestamp.yellow(),
+                            level.fg::<DarkSlateBlue>(),
+                            err
+                        );
 
                         stdout
                             .write_all(log.as_bytes())
@@ -148,7 +153,12 @@ impl Log<String> for String {
             Logger::Stdout(mutex_stdout) => {
                 let mut stdout = mutex_stdout.lock().await;
 
-                let log = format!("{} {}:\n{}\n\n", timestamp, level, self);
+                let log = format!(
+                    "{} {}:\n{}\n\n",
+                    timestamp.yellow(),
+                    level.fg::<DarkSlateBlue>(),
+                    self
+                );
 
                 stdout
                     .write_all(log.as_bytes())
