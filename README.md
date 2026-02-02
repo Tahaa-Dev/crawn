@@ -11,11 +11,11 @@
 
 ## Features
 
-- **Blazing fast** – Built with Rust & tokio for async I/O
+- **Blazing fast** – Built with Rust & tokio for async I/O and concurrency
 - **Smart filtering** – URL-based keyword matching (no content fetching required)
 - **NDJSON output** – One JSON object per line for easy streaming
 - **BFS crawling** – Depth-first traversal with configurable depth limits
-- **Rate limiting** – Configurable request rate (default: 2 - 5 req/sec)
+- **Rate limiting** – Configurable request rate (default: ~2req/sec)
 - **Error recovery** – Gracefully handles network errors and broken links
 - **Rich logging** – Colored, timestamped logs with context chains
 
@@ -24,12 +24,12 @@
 ## Installation
 
 Run this command (requires cargo):
-```sh
+```bash
 cargo install crawn
 ```
 
 - Or build from source (requires cargo):
-```sh
+```bash
 git clone https://github.com/Tahaa-Dev/crawn.git
 cd crawn
 cargo build --release
@@ -40,32 +40,32 @@ cargo build --release
 ## Usage
 
 - Basic Crawling:
-```sh
+```bash
 crawn -o output.ndjson https://example.com
 ```
 
 - With Logging:
-```sh
+```bash
 crawn -o output.ndjson -l crawler.log https://example.com
 ```
 
 - Verbose Mode (Log All Requests):
-```sh
+```bash
 crawn -o output.ndjson -v https://example.com
 ```
 
 - Custom Depth Limit:
-```sh
+```bash
 crawn -o output.ndjson -m 3 https://example.com
 ```
 
 - Full HTML:
-```sh
+```bash
 crawn -o output.ndjson --include-content https://example.com
 ```
 
 - Extracted text only:
-```sh
+```bash
 crawn -o output.ndjson --include-text https://example.com
 ```
 
@@ -75,19 +75,19 @@ crawn -o output.ndjson --include-text https://example.com
 
 Results are written as NDJSON (newline-delimited JSON):
 ```json
-{"url":"https://example.com","title":"Example Domain","depth":0}
-{"url":"https://example.com/about","title":"About Us","depth":1}
-{"url":"https://example.com/contact","title":"Contact","depth":1}
+{"URL": "https://example.com", "Title": "Example Domain", "Links": 12}
+{"URL": "https://example.com/about", "Title": "About Us", "Links": 9}
+{"URL": "https://example.com/contact", "Title": "Contact", "Links": 48}
 ```
 
 - With `--include-text`:
 ```json
-{"url":"https://example.com","title":"Example Domain","depth":0,"text":"Example Domain\nThis domain is..."}
+{"URL": "https://example.com", "Title": "Example Domain", "Links": 27, "Text": "Example Domain\nThis domain is..."}
 ```
 
 - With `--include-content`:
 ```json
-{"url":"https://example.com","title":"Example Domain","depth":0,"content":"<!DOCTYPE html>\n<html>..."}
+{"URL": "https://example.com", "Title": "Example Domain", "Links": 30, "Content": "<!DOCTYPE html>\n<html>..."}
 ```
 
 ---
@@ -108,7 +108,7 @@ Sent request to URL: https://example.com
 
 2026-01-24 02:37:41.123 [WARN]:
 Failed to fetch URL: https://example.com/broken-link
-Caused by: HTTP 404 Not Found
+Cause: HTTP 404 Not Found
 ```
 
 ---
@@ -116,17 +116,17 @@ Caused by: HTTP 404 Not Found
 ## Examples
 
 - Crawl Documentation Site:
-```sh
+```bash
 crawn -o rust-docs.ndjson https://doc.rust-lang.org/book/
 ```
 
 - Crawl with Logging:
-```sh
+```bash
 crawn -o output.ndjson -l crawler.log -v https://example.com
 ```
 
 - Limit to 2 Levels Deep:
-```sh
+```bash
 crawn -o shallow.ndjson -m 2 https://example.com
 ```
 
@@ -134,7 +134,7 @@ crawn -o shallow.ndjson -m 2 https://example.com
 
 ## Limitations
 
-- Same-domain only (no external links, by design)
+- Same-domain only (no external links by design)
 - No JavaScript rendering (static HTML only)
 - No authentication (public pages only)
 

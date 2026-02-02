@@ -1,5 +1,15 @@
 <h1 align="center">Changelog</h1>
 
+## [v0.2.0] 2026-02-03
+
+### Summary
+
+- Added concurrency to crawn with concurrent `tokio::task`s
+- Improved logging and error messages
+- Added crawling summary at the end of each successful crawl
+
+---
+
 ## [v0.1.1] 2026-01-26
 
 ### Summary

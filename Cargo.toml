@@ -1,11 +1,11 @@
 [package]
 name = "crawn"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 authors = ["Taha Mahmoud <tahamahmoud7097@gmail.com>"]
-categories = ["asynchronous", "web-programming", "command-line-utilities", "network-programming", "web-programming::http-client"]
+categories = ["asynchronous", "concurrency", "command-line-utilities", "network-programming", "web-programming::http-client"]
 description = "A utility for web crawling and scraping"
-keywords = ["cli", "http", "web-crawler", "async", "web-scraping"]
+keywords = ["cli", "concurrency", "web-crawler", "async", "web-scraping"]
 license = "MIT"
 repository = "https://github.com/Tahaa-Dev/crawn"
 readme = "README.md"

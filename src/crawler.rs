@@ -20,7 +20,7 @@ use crate::{
 
 pub(crate) struct CrawnClient {
     client: Client,
-    last_req: Mutex<Instant>,
+    next_req: Mutex<Instant>,
 }
 
 impl CrawnClient {
@@ -31,36 +31,32 @@ impl CrawnClient {
                 .build()
                 .context("Failed to build client")?,
 
-            last_req: Mutex::new(Instant::now()),
+            next_req: Mutex::new(Instant::now()),
         })
     }
 
     pub(crate) async fn get(&self, url: &str) -> Res<Response> {
-        let wait_duration = {
-            let mut last_req = self.last_req.lock().await;
-            let now = Instant::now();
+        let mut next_req = self.next_req.lock().await;
 
-            let wait = if now < *last_req {
-                *last_req - now
-            } else {
-                Duration::ZERO
-            };
-
-            *last_req =
-                Instant::now() + wait + Duration::from_millis(rand::random_range(300..=600));
-
-            wait
-        };
-
-        if !wait_duration.is_zero() {
-            sleep(wait_duration).await;
+        let now = Instant::now();
+        if now < *next_req {
+            sleep(*next_req - now).await;
         }
 
-        self.client
+        let res = self
+            .client
             .get(url)
             .send()
             .await
-            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
+            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()));
+
+        *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..=600));
+
+        res
+    }
+
+    pub(crate) async fn timeout(&self, time: Duration) {
+        *self.next_req.lock().await = Instant::now() + time;
     }
 }
 
@@ -75,6 +71,7 @@ pub(crate) async fn worker<R: UrlRepo>(
     selectors: Arc<Selectors>,
     client: Arc<CrawnClient>,
     url: String,
+    can_extract: bool,
 ) -> Res<()> {
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
@@ -85,7 +82,7 @@ pub(crate) async fn worker<R: UrlRepo>(
     let content = fetch_url(&url, client).await?;
 
     if args.verbose {
-        format!("Sent request to URL: {}", &url.bright_blue().italic())
+        format!("Fetched content from URL: {}", &url.bright_blue().italic())
             .log("[INFO]")
             .await?;
     }
@@ -96,7 +93,11 @@ pub(crate) async fn worker<R: UrlRepo>(
 
         let task = tokio::task::spawn_blocking(move || {
             let doc = Html::parse_document(&content);
-            let links = extract_links(&doc, Arc::new(base), &selectors.anchor);
+            let links = if can_extract {
+                extract_links(&doc, Arc::new(base), &selectors.anchor)
+            } else {
+                Vec::new()
+            };
 
             let text = selectors
                 .body
@@ -126,7 +127,7 @@ pub(crate) async fn worker<R: UrlRepo>(
 
             for link in links {
                 let link = match_option!(link.log("[WARN]").await?);
-                let link = normalize_url(link)?;
+                let link = match_option!(normalize_url(link).log("[WARN]").await?);
 
                 match_option!(rp.add(link).await.log("[WARN]").await?);
 

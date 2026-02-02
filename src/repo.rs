@@ -7,6 +7,8 @@ pub(crate) trait UrlRepo {
     async fn pop(&mut self) -> Res<Option<String>>;
 
     async fn kick(&mut self, url: String) -> Res<()>;
+
+    async fn mark(&mut self, url: String) -> Res<()>;
 }
 
 #[derive(Debug)]
@@ -46,6 +48,12 @@ impl UrlRepo for InMemoryRepo {
 
     async fn kick(&mut self, url: String) -> Res<()> {
         self.urls.push_front(url);
+
+        Ok(())
+    }
+
+    async fn mark(&mut self, url: String) -> Res<()> {
+        self.visited.insert(url);
 
         Ok(())
     }

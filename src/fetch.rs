@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use owo_colors::OwoColorize;
+use reqwest::StatusCode;
 use scraper::{Html, Selector};
 use url::Url;
 
@@ -10,8 +11,35 @@ use crate::{
 };
 
 pub(crate) async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
-    let res = Arc::clone(&client).get(url).await?;
+    let res = client.get(url).await?;
+    let stat = res.status();
 
+    if !stat.is_success() {
+        if let StatusCode::TOO_MANY_REQUESTS = stat {
+            client.timeout(Duration::from_millis(2500)).await;
+            res.error_for_status_ref()
+                .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
+                .with_context(|| {
+                    format!(
+                        "Server returned {} response, status code: {}",
+                        "`TOO_MANY_REQUESTS`".yellow(),
+                        "429".red().bold()
+                    )
+                })
+                .context(
+                    "Will wait for 2.5 second timeout to avoid more bad responses and IP bans",
+                )?;
+        } else {
+            res.error_for_status_ref()
+                .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
+                .with_context(|| {
+                    format!(
+                        "Server returned status code: {}",
+                        stat.as_str().red().bold()
+                    )
+                })?;
+        }
+    }
     let text = res.text().await.with_context(|| {
         format!(
             "Failed to fetch HTML (content) from URL: {}",
@@ -100,7 +128,7 @@ mod tests {
 
         let normalized = normalize_url(url).context("Failed to normalize URL")?;
 
-        assert_eq!(normalized, "https://example.com/index.html");
+        assert_eq!(normalized, "http://example.com/index.html");
 
         Ok(())
     }

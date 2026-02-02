@@ -1,4 +1,4 @@
-use owo_colors::{OwoColorize, colors::css::DarkSlateBlue};
+use owo_colors::{OwoColorize, colors::css::MediumPurple};
 use resext::resext;
 use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
@@ -68,7 +68,7 @@ pub(crate) trait Log<T> {
     async fn log(self, level: &'static str) -> Res<Option<T>>;
 }
 
-const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
+pub(crate) const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
     "[year]-[month padding:zero]-[day padding:zero] [hour]:[minute]:[second].[subsecond digits:3]"
 );
 
@@ -82,7 +82,7 @@ impl<T> Log<T> for Res<T> {
                         time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC),
                     )
                     .format(&LOG_TIMESTAMP_FORMAT)
-                    .map_err(std::io::Error::other)
+                    .map_err(|_| String::from("Format Failure"))
                     .context("Failed to format timestamp for log")?;
 
                 let logger = init_logger().await;
@@ -111,7 +111,7 @@ impl<T> Log<T> for Res<T> {
                         let log = format!(
                             "{} {}:\n{}\n\n",
                             timestamp.yellow(),
-                            level.fg::<DarkSlateBlue>(),
+                            level.fg::<MediumPurple>(),
                             err
                         );
 
@@ -132,7 +132,7 @@ impl Log<String> for String {
         let timestamp: String = time::OffsetDateTime::now_utc()
             .to_offset(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
             .format(&LOG_TIMESTAMP_FORMAT)
-            .map_err(std::io::Error::other)
+            .map_err(|_| String::from("Format Failure"))
             .context("Failed to format timestamp for log")?;
 
         let logger = init_logger().await;
@@ -156,7 +156,7 @@ impl Log<String> for String {
                 let log = format!(
                     "{} {}:\n{}\n\n",
                     timestamp.yellow(),
-                    level.fg::<DarkSlateBlue>(),
+                    level.fg::<MediumPurple>(),
                     self
                 );
 
