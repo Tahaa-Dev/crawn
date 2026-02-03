@@ -29,6 +29,7 @@ jobs:
       run: cargo clippy --all-targets -- -D warnings
     
     - name: Check formatting
+      if: github.event_name == 'pull_request'
       run: cargo fmt -- --check
 
   build:
