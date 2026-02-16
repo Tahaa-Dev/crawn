@@ -1,29 +1,21 @@
 use crate::error::Res;
 use std::collections::{HashSet, VecDeque};
+use std::future::Future;
 
-pub(crate) trait UrlRepo {
-    async fn add(&mut self, url: String) -> Res<()>;
+pub trait UrlRepo {
+    fn add(&mut self, url: String) -> impl Future<Output = Res<()>> + Send + Sync;
 
-    async fn pop(&mut self) -> Res<Option<String>>;
+    fn pop(&mut self) -> impl Future<Output = Res<Option<String>>> + Send + Sync;
 
-    async fn kick(&mut self, url: String) -> Res<()>;
+    fn kick(&mut self, url: String) -> impl Future<Output = Res<()>> + Send + Sync;
 
-    async fn mark(&mut self, url: String) -> Res<()>;
+    fn mark(&mut self, url: String) -> impl Future<Output = Res<()>> + Send + Sync;
 }
 
-#[derive(Debug)]
-pub(crate) struct InMemoryRepo {
+#[derive(Default)]
+pub struct InMemoryRepo {
     urls: VecDeque<String>,
     visited: HashSet<String>,
-}
-
-impl InMemoryRepo {
-    pub(crate) fn new() -> Self {
-        InMemoryRepo {
-            urls: VecDeque::new(),
-            visited: HashSet::new(),
-        }
-    }
 }
 
 impl UrlRepo for InMemoryRepo {
@@ -68,7 +60,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_inmemoryrepo() -> Res<()> {
-        let mut repo = InMemoryRepo::new();
+        let mut repo = InMemoryRepo::default();
 
         for i in 0..50 {
             repo.add(format!("https://example.com/index{}.html", i))

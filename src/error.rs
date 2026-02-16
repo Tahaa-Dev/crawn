@@ -9,11 +9,12 @@ use tokio::{
 };
 
 #[resext(
-    msg_delimiter = " • ",
+    delimiter = " -> ",
     source_prefix = "Cause: ",
-    include_variant = true
+    include_variant = true,
+    alloc = true
 )]
-pub(crate) enum CrawnError {
+pub enum CrawnError {
     IoError(std::io::Error),
     NetworkError(reqwest::Error),
     UrlParseError(url::ParseError),
@@ -39,24 +40,26 @@ async fn init_logger() -> &'static Logger {
         .get_or_init(async || {
             let args = &*crate::ARGS;
             if let Some(path) = &args.log_file {
-                let file = OpenOptions::new()
+                let res = OpenOptions::new()
                     .write(true)
                     .truncate(true)
                     .create(true)
                     .open(path)
-                    .await
-                    .better_expect(
-                        || {
-                            format!(
-                                "{} Failed to open log file: {}",
-                                "FATAL:".red().bold(),
-                                path.to_string_lossy().red().bold()
-                            )
-                        },
-                        1,
-                    );
+                    .await;
 
-                Logger::File(Mutex::new(file))
+                match res {
+                    Ok(file) => Logger::File(Mutex::new(file)),
+                    Err(err) => {
+                        println!(
+                            "{} Failed to open log file: {}\nCause: {}",
+                            "[WARN]".fg::<MediumPurple>(),
+                            path.to_string_lossy().red().bold(),
+                            err
+                        );
+
+                        Logger::Stdout(Mutex::new(stdout()))
+                    }
+                }
             } else {
                 Logger::Stdout(Mutex::new(stdout()))
             }
@@ -64,11 +67,11 @@ async fn init_logger() -> &'static Logger {
         .await
 }
 
-pub(crate) trait Log<T> {
+pub trait Log<T> {
     async fn log(self, level: &'static str) -> Res<Option<T>>;
 }
 
-pub(crate) const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
+pub const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
     "[year]-[month padding:zero]-[day padding:zero] [hour]:[minute]:[second].[subsecond digits:3]"
 );
 
@@ -100,7 +103,7 @@ impl<T> Log<T> for Res<T> {
 
                         wtr.write_all(log.as_bytes())
                             .await
-                            .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                            .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
                         Ok(None)
                     }
@@ -118,7 +121,7 @@ impl<T> Log<T> for Res<T> {
                         stdout
                             .write_all(log.as_bytes())
                             .await
-                            .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                            .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
                         Ok(None)
                     }
@@ -127,8 +130,9 @@ impl<T> Log<T> for Res<T> {
         }
     }
 }
-impl Log<String> for String {
-    async fn log(self, level: &'static str) -> Res<Option<String>> {
+
+impl Log<()> for String {
+    async fn log(self, level: &'static str) -> Res<Option<()>> {
         let timestamp: String = time::OffsetDateTime::now_utc()
             .to_offset(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
             .format(&LOG_TIMESTAMP_FORMAT)
@@ -145,7 +149,7 @@ impl Log<String> for String {
 
                 wtr.write_all(log.as_bytes())
                     .await
-                    .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                    .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
                 Ok(None)
             }
@@ -163,7 +167,7 @@ impl Log<String> for String {
                 stdout
                     .write_all(log.as_bytes())
                     .await
-                    .with_context(|| format!("Failed to write log at: {}", timestamp))?;
+                    .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
                 Ok(None)
             }
@@ -171,7 +175,6 @@ impl Log<String> for String {
     }
 }
 
-#[doc(hidden)]
 #[macro_export]
 macro_rules! match_option {
     ($opt:expr) => {

@@ -18,13 +18,13 @@ use crate::{
     output::write_output,
 };
 
-pub(crate) struct CrawnClient {
+pub struct CrawnClient {
     client: Client,
     next_req: Mutex<Instant>,
 }
 
 impl CrawnClient {
-    pub(crate) fn new() -> Res<Self> {
+    pub fn new() -> Res<Self> {
         Ok(Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(10))
@@ -35,7 +35,7 @@ impl CrawnClient {
         })
     }
 
-    pub(crate) async fn get(&self, url: &str) -> Res<Response> {
+    pub async fn get(&self, url: &str) -> Res<Response> {
         let mut next_req = self.next_req.lock().await;
 
         let now = Instant::now();
@@ -43,30 +43,28 @@ impl CrawnClient {
             sleep(*next_req - now).await;
         }
 
-        let res = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()));
+        let res = self.client.get(url).send().await.with_context(format_args!(
+            "Failed to fetch URL: {}",
+            url.bright_blue().italic()
+        ));
 
         *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..=600));
 
         res
     }
 
-    pub(crate) async fn timeout(&self, time: Duration) {
+    pub async fn timeout(&self, time: Duration) {
         *self.next_req.lock().await = Instant::now() + time;
     }
 }
 
-pub(crate) struct Selectors {
-    pub(crate) anchor: Selector,
-    pub(crate) title: Selector,
-    pub(crate) body: Option<Selector>,
+pub struct Selectors {
+    pub anchor: Selector,
+    pub title: Selector,
+    pub body: Option<Selector>,
 }
 
-pub(crate) async fn worker<R: UrlRepo>(
+pub async fn worker<R: UrlRepo>(
     repo: Arc<Mutex<R>>,
     selectors: Arc<Selectors>,
     client: Arc<CrawnClient>,
@@ -76,8 +74,10 @@ pub(crate) async fn worker<R: UrlRepo>(
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
 
-    let base = Url::parse(&url)
-        .with_context(|| format!("Failed to parse URL: {}", &url.italic().bright_blue()))?;
+    let base = Url::parse(&url).with_context(format_args!(
+        "Failed to parse URL: {}",
+        &url.italic().bright_blue()
+    ))?;
 
     let content = fetch_url(&url, client).await?;
 
@@ -148,7 +148,7 @@ pub(crate) async fn worker<R: UrlRepo>(
 static GENERICS: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| HashSet::from(["tutorial", "guide", "blog"]));
 
-pub(crate) fn should_crawl(
+pub fn should_crawl(
     base_domain: Arc<String>,
     base_keywords: Arc<HashSet<String>>,
     other: &Url,
@@ -192,7 +192,7 @@ static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
-pub(crate) fn get_keywords(url: &Url) -> HashSet<String> {
+pub fn get_keywords(url: &Url) -> HashSet<String> {
     let mut url = url.clone();
 
     url.set_query(None);

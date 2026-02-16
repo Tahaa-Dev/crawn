@@ -10,7 +10,7 @@ use crate::{
     error::{Res, ResErr, ResExt},
 };
 
-pub(crate) async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
+pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
     let res = client.get(url).await?;
     let stat = res.status();
 
@@ -18,63 +18,57 @@ pub(crate) async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<Str
         if let StatusCode::TOO_MANY_REQUESTS = stat {
             client.timeout(Duration::from_millis(2500)).await;
             res.error_for_status_ref()
-                .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
-                .with_context(|| {
-                    format!(
-                        "Server returned {} response, status code: {}",
-                        "`TOO_MANY_REQUESTS`".yellow(),
-                        "429".red().bold()
-                    )
-                })
+                .with_context(format_args!(
+                    "Failed to fetch URL: {}",
+                    url.bright_blue().italic()
+                ))
+                .with_context(format_args!(
+                    "Server returned {} response, status code: {}",
+                    "`TOO_MANY_REQUESTS`".yellow(),
+                    "429".red().bold()
+                ))
                 .context(
                     "Will wait for 2.5 second timeout to avoid more bad responses and IP bans",
                 )?;
         } else {
             res.error_for_status_ref()
-                .with_context(|| format!("Failed to fetch URL: {}", url.bright_blue().italic()))
-                .with_context(|| {
-                    format!(
-                        "Server returned status code: {}",
-                        stat.as_str().red().bold()
-                    )
-                })?;
+                .with_context(format_args!(
+                    "Failed to fetch URL: {}",
+                    url.bright_blue().italic()
+                ))
+                .with_context(format_args!(
+                    "Server returned status code: {}",
+                    stat.as_str().red().bold()
+                ))?;
         }
     }
-    let text = res.text().await.with_context(|| {
-        format!(
-            "Failed to fetch HTML (content) from URL: {}",
-            url.bright_blue().italic()
-        )
-    })?;
+    let text = res.text().await.with_context(format_args!(
+        "Failed to fetch HTML (content) from URL: {}",
+        url.bright_blue().italic()
+    ))?;
 
     Ok(text)
 }
 
-pub(crate) fn extract_links(
-    document: &Html,
-    base: Arc<Url>,
-    anchor_selector: &Selector,
-) -> Vec<Res<Url>> {
+pub fn extract_links(document: &Html, base: Arc<Url>, anchor_selector: &Selector) -> Vec<Res<Url>> {
     document
         .select(anchor_selector)
         .map(|anchor| {
             let href = anchor.attr("href").ok_or_else(|| {
                 ResErr::new(
-                    b"Failed to extract URL from HTML anchor tag (link)".to_vec(),
+                    "Failed to extract URL from HTML anchor tag (link)",
                     String::from("Failed to select 'href' from anchor tag"),
                 )
             })?;
 
-            base.join(href).with_context(|| {
-                format!(
-                    "Failed to resolve relative URL: {}",
-                    href.bright_blue().italic()
-                )
-            })
+            base.join(href).with_context(format_args!(
+                "Failed to resolve relative URL: {}",
+                href.bright_blue().italic()
+            ))
         })
         .collect()
 }
-pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String {
+pub fn extract_text(document: &Html, body_selector: &Selector) -> String {
     if let Some(body) = document.select(body_selector).next() {
         body.text()
             .collect::<String>()
@@ -86,7 +80,7 @@ pub(crate) fn extract_text(document: &Html, body_selector: &Selector) -> String 
     }
 }
 
-pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> String {
+pub fn extract_title(document: &Html, title_selector: &Selector) -> String {
     if let Some(title) = document.select(title_selector).next() {
         title.text().collect::<String>().trim().to_string()
     } else {
@@ -94,7 +88,7 @@ pub(crate) fn extract_title(document: &Html, title_selector: &Selector) -> Strin
     }
 }
 
-pub(crate) fn normalize_url(mut url: Url) -> Res<String> {
+pub fn normalize_url(mut url: Url) -> Res<String> {
     if let Some(domain) = url.domain() {
         let res = url.set_host(Some(&domain.to_lowercase()));
         res.context("Failed to set host domain for URL")?;

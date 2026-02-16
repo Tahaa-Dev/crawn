@@ -153,20 +153,20 @@ mod repo;
 
 use crate::fetch::*;
 use crawler::*;
-pub(crate) use repo::*;
+pub use repo::*;
 use scraper::{Html, Selector};
 use url::Url;
 
 use crate::error::{LOG_TIMESTAMP_FORMAT, Log, Res, ResExt};
 use crate::output::{flush_writer, write_output};
 
-pub(crate) static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
+pub static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
 static CRAWLED: LazyLock<Arc<AtomicUsize>> = LazyLock::new(|| Arc::new(AtomicUsize::new(0)));
 static SUCCESSES: LazyLock<Arc<AtomicUsize>> = LazyLock::new(|| Arc::new(AtomicUsize::new(0)));
 
 async fn run() -> Res<()> {
     let args = &*ARGS;
-    let repo = Arc::new(Mutex::new(InMemoryRepo::new()));
+    let repo = Arc::new(Mutex::new(InMemoryRepo::default()));
     let client = Arc::new(CrawnClient::new()?);
     let curr_depth = Arc::new(AtomicU8::new(0));
     let pending = Arc::new(AtomicUsize::new(0));
@@ -180,27 +180,21 @@ async fn run() -> Res<()> {
     let base_domain = Arc::new(base.domain().unwrap_or_default().to_owned());
 
     let selectors = Arc::new(Selectors {
-        anchor: Selector::parse("a[href]").with_context(|| {
-            format!(
-                "Failed to parse selector for HTML 'anchor' (link) tag: {}",
-                "`<a href=\"URL\">`".yellow()
-            )
-        })?,
+        anchor: Selector::parse("a[href]").with_context(format_args!(
+            "Failed to parse selector for HTML 'anchor' (link) tag: {}",
+            "`<a href=\"URL\">`".yellow()
+        ))?,
 
-        title: Selector::parse("title").with_context(|| {
-            format!(
-                "Failed to parse selector for HTML 'title' tag: {}",
-                "`<title>`".yellow()
-            )
-        })?,
+        title: Selector::parse("title").with_context(format_args!(
+            "Failed to parse selector for HTML 'title' tag: {}",
+            "`<title>`".yellow()
+        ))?,
 
         body: if args.include_text {
-            Some(Selector::parse("body").with_context(|| {
-                format!(
-                    "Failed to parse selector for HTML 'body' tag: {}",
-                    "`<body>`".yellow()
-                )
-            })?)
+            Some(Selector::parse("body").with_context(format_args!(
+                "Failed to parse selector for HTML 'body' tag: {}",
+                "`<body>`".yellow()
+            ))?)
         } else {
             None
         },
@@ -288,6 +282,7 @@ async fn run() -> Res<()> {
                     let mut repo_guard = repo.lock().await;
                     repo_guard.pop().await.log("[WARN]").await?.unwrap_or(None)
                 };
+
                 match work_item {
                     None => {
                         if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
@@ -329,9 +324,10 @@ async fn run() -> Res<()> {
                             let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
                                 < args.max_depth.unwrap_or(4);
 
-                            let other = Url::parse(&url).with_context(|| {
-                                format!("Failed to parse URL: {}", &url.bright_blue().italic())
-                            })?;
+                            let other = Url::parse(&url).with_context(format_args!(
+                                "Failed to parse URL: {}",
+                                &url.bright_blue().italic()
+                            ))?;
 
                             if should_crawl(
                                 Arc::clone(&base_domain),

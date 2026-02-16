@@ -1,5 +1,4 @@
 use owo_colors::OwoColorize;
-use resext::panic_if;
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncWriteExt, BufWriter},
@@ -18,35 +17,39 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
 
             let ext = path.extension().unwrap_or_else(|| std::ffi::OsStr::new(""));
 
-            panic_if!(
-                ext != "ndjson",
-                || format!(
+            if ext != "ndjson" {
+                eprintln!(
                     "{} Output file extension: {}{}{} is not: {}",
                     "[FATAL]".red().bold(),
                     "[".purple(),
                     ext.display().purple(),
                     "]".purple(),
                     "[ndjson]".purple()
-                ),
-                1
-            );
+                );
+                std::process::exit(1);
+            }
 
-            let file = OpenOptions::new()
+            let res = OpenOptions::new()
                 .write(true)
                 .truncate(true)
                 .create(true)
                 .open(path)
-                .await
-                .better_expect(
-                    || {
-                        format!(
-                            "{} Failed to open output file: {}",
-                            "[FATAL]".red().bold(),
-                            path.to_string_lossy().red().bold()
-                        )
-                    },
-                    1,
-                );
+                .await;
+
+            let file = match res {
+                Ok(file) => file,
+                Err(err) => {
+                    eprintln!(
+                        "{} Failed to open output file: {}\nCause: {}",
+                        "[FATAL]".red().bold(),
+                        path.to_string_lossy().red().bold(),
+                        err
+                    );
+
+                    std::process::exit(1);
+                }
+            };
+
             let buf_cap = if args.include_content {
                 1024 * 16
             } else if args.include_text {
@@ -60,7 +63,7 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
         .await
 }
 
-pub(crate) async fn flush_writer() -> Res<()> {
+pub async fn flush_writer() -> Res<()> {
     init_writer()
         .await
         .lock()
@@ -70,7 +73,7 @@ pub(crate) async fn flush_writer() -> Res<()> {
         .context("Failed to flush writer into output file")
 }
 
-pub(crate) async fn write_output(
+pub async fn write_output(
     url: String,
     title: String,
     links: usize,
