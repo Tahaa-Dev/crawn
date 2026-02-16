@@ -1,6 +1,5 @@
 use owo_colors::{OwoColorize, colors::css::MediumPurple};
 use resext::resext;
-use strip_ansi_escapes::strip_str;
 use time::macros::format_description;
 use tokio::{
     fs::{File, OpenOptions},
@@ -19,8 +18,8 @@ pub enum CrawnError {
     NetworkError(reqwest::Error),
     UrlParseError(url::ParseError),
     ScrapeError(scraper::error::SelectorErrorKind<'static>),
-    ConcurrentTaskError(tokio::task::JoinError),
-    Custom(String),
+    ConcurrentTaskFailure(tokio::task::JoinError),
+    FmtError(String),
 }
 
 unsafe impl Send for CrawnError {}
@@ -50,7 +49,7 @@ async fn init_logger() -> &'static Logger {
                 match res {
                     Ok(file) => Logger::File(Mutex::new(file)),
                     Err(err) => {
-                        println!(
+                        eprintln!(
                             "{} Failed to open log file: {}\nCause: {}",
                             "[WARN]".fg::<MediumPurple>(),
                             path.to_string_lossy().red().bold(),
@@ -94,12 +93,7 @@ impl<T> Log<T> for Res<T> {
                     Logger::File(mutex_wtr) => {
                         let mut wtr = mutex_wtr.lock().await;
 
-                        let log = format!(
-                            "{} {}:\n{}\n\n",
-                            timestamp,
-                            level,
-                            strip_str(err.to_string())
-                        );
+                        let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
 
                         wtr.write_all(log.as_bytes())
                             .await
@@ -145,7 +139,7 @@ impl Log<()> for String {
             Logger::File(mutex_wtr) => {
                 let mut wtr = mutex_wtr.lock().await;
 
-                let log = format!("{} {}:\n{}\n\n", timestamp, level, strip_str(self));
+                let log = format!("{} {}:\n{}\n\n", timestamp, level, self);
 
                 wtr.write_all(log.as_bytes())
                     .await

@@ -324,10 +324,8 @@ async fn run() -> Res<()> {
                             let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
                                 < args.max_depth.unwrap_or(4);
 
-                            let other = Url::parse(&url).with_context(format_args!(
-                                "Failed to parse URL: {}",
-                                &url.bright_blue().italic()
-                            ))?;
+                            let other = Url::parse(&url)
+                                .with_context(format_args!("Failed to parse URL: {}", &url))?;
 
                             if should_crawl(
                                 Arc::clone(&base_domain),

@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use owo_colors::OwoColorize;
 use reqwest::StatusCode;
 use scraper::{Html, Selector};
 use url::Url;
@@ -18,33 +17,23 @@ pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
         if let StatusCode::TOO_MANY_REQUESTS = stat {
             client.timeout(Duration::from_millis(2500)).await;
             res.error_for_status_ref()
-                .with_context(format_args!(
-                    "Failed to fetch URL: {}",
-                    url.bright_blue().italic()
-                ))
+                .with_context(format_args!("Failed to fetch URL: {}", url))
                 .with_context(format_args!(
                     "Server returned {} response, status code: {}",
-                    "`TOO_MANY_REQUESTS`".yellow(),
-                    "429".red().bold()
+                    "`TOO_MANY_REQUESTS`", "429"
                 ))
                 .context(
                     "Will wait for 2.5 second timeout to avoid more bad responses and IP bans",
                 )?;
         } else {
             res.error_for_status_ref()
-                .with_context(format_args!(
-                    "Failed to fetch URL: {}",
-                    url.bright_blue().italic()
-                ))
-                .with_context(format_args!(
-                    "Server returned status code: {}",
-                    stat.as_str().red().bold()
-                ))?;
+                .with_context(format_args!("Failed to fetch URL: {}", url))
+                .with_context(format_args!("Server returned status code: {}", stat))?;
         }
     }
     let text = res.text().await.with_context(format_args!(
         "Failed to fetch HTML (content) from URL: {}",
-        url.bright_blue().italic()
+        url
     ))?;
 
     Ok(text)
@@ -57,14 +46,12 @@ pub fn extract_links(document: &Html, base: Arc<Url>, anchor_selector: &Selector
             let href = anchor.attr("href").ok_or_else(|| {
                 ResErr::new(
                     "Failed to extract URL from HTML anchor tag (link)",
-                    String::from("Failed to select 'href' from anchor tag"),
+                    "Failed to select 'href' from anchor tag".to_string(),
                 )
             })?;
 
-            base.join(href).with_context(format_args!(
-                "Failed to resolve relative URL: {}",
-                href.bright_blue().italic()
-            ))
+            base.join(href)
+                .with_context(format_args!("Failed to resolve relative URL: {}", href))
         })
         .collect()
 }
@@ -73,7 +60,7 @@ pub fn extract_text(document: &Html, body_selector: &Selector) -> String {
         body.text()
             .collect::<String>()
             .split_whitespace()
-            .collect::<Vec<_>>()
+            .collect::<Vec<&str>>()
             .join(" ")
     } else {
         String::new()

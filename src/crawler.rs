@@ -4,7 +4,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use owo_colors::OwoColorize;
 use reqwest::{Client, Response};
 use scraper::{Html, Selector};
 use tokio::{sync::Mutex, time::sleep};
@@ -43,12 +42,14 @@ impl CrawnClient {
             sleep(*next_req - now).await;
         }
 
-        let res = self.client.get(url).send().await.with_context(format_args!(
-            "Failed to fetch URL: {}",
-            url.bright_blue().italic()
-        ));
+        let res = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .with_context(format_args!("Failed to fetch URL: {}", url));
 
-        *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..=600));
+        *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..601));
 
         res
     }
@@ -74,15 +75,12 @@ pub async fn worker<R: UrlRepo>(
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
 
-    let base = Url::parse(&url).with_context(format_args!(
-        "Failed to parse URL: {}",
-        &url.italic().bright_blue()
-    ))?;
+    let base = Url::parse(&url).with_context(format_args!("Failed to parse URL: {}", &url))?;
 
     let content = fetch_url(&url, client).await?;
 
     if args.verbose {
-        format!("Fetched content from URL: {}", &url.bright_blue().italic())
+        format!("Fetched content from URL: {}", &url)
             .log("[INFO]")
             .await?;
     }
