@@ -208,9 +208,7 @@ async fn run() -> Res<()> {
     successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     if args.verbose {
-        String::from("Fetched content from base URL")
-            .log("[INFO]")
-            .await?;
+        String::from("Fetched content from base URL").log().await?;
     }
 
     let doc = Html::parse_document(&content);
@@ -224,10 +222,10 @@ async fn run() -> Res<()> {
             .context("Failed to mark base URL as visited")?;
 
         for link in links {
-            let link = match_option!(link.log("[WARN]").await?);
-            let link = match_option!(normalize_url(link).log("[WARN]").await?);
+            let link = match_option!(link.log().await?);
+            let link = match_option!(normalize_url(link).log().await?);
 
-            match_option!(rp.add(link).await.log("[WARN]").await?);
+            match_option!(rp.add(link).await.log().await?);
 
             link_count += 1;
         }
@@ -249,7 +247,7 @@ async fn run() -> Res<()> {
 
     write_output(url.clone(), title, link_count, text, content)
         .await
-        .log("[WARN]")
+        .log()
         .await?;
 
     let task_count = if args.include_content || args.include_text {
@@ -280,7 +278,7 @@ async fn run() -> Res<()> {
 
                 let work_item = {
                     let mut repo_guard = repo.lock().await;
-                    repo_guard.pop().await.log("[WARN]").await?.unwrap_or(None)
+                    repo_guard.pop().await.log().await?.unwrap_or(None)
                 };
 
                 match work_item {
@@ -296,15 +294,9 @@ async fn run() -> Res<()> {
                         if &url == "M" {
                             if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
                                 #[allow(clippy::unit_arg)]
-                                repo.lock()
-                                    .await
-                                    .kick(url)
-                                    .await
-                                    .log("[WARN]")
-                                    .await?
-                                    .unwrap_or({
-                                        tokio::time::sleep(Duration::from_millis(100)).await;
-                                    });
+                                repo.lock().await.kick(url).await.log().await?.unwrap_or({
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
+                                });
 
                                 tokio::time::sleep(Duration::from_millis(100)).await;
                             } else {
@@ -312,7 +304,7 @@ async fn run() -> Res<()> {
                                     .await
                                     .add(url)
                                     .await
-                                    .log("[WARN]")
+                                    .log()
                                     .await?
                                     .unwrap_or_default();
 
@@ -342,7 +334,7 @@ async fn run() -> Res<()> {
                                     can_extract,
                                 )
                                 .await
-                                .log("[WARN]")
+                                .log()
                                 .await?
                                 .is_some();
 

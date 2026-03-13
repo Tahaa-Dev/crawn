@@ -3,7 +3,7 @@ use resext::resext;
 use time::macros::format_description;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncWriteExt, Stdout, stdout},
+    io::{AsyncWriteExt, BufWriter},
     sync::{Mutex, OnceCell},
 };
 
@@ -27,27 +27,21 @@ unsafe impl Sync for CrawnError {}
 unsafe impl Send for ResErr {}
 unsafe impl Sync for ResErr {}
 
-enum Logger {
-    Stdout(Mutex<Stdout>),
-    File(Mutex<File>),
-}
+static LOGGER: OnceCell<Mutex<BufWriter<File>>> = OnceCell::const_new();
 
-static LOGGER: OnceCell<Logger> = OnceCell::const_new();
-
-async fn init_logger() -> &'static Logger {
+async fn init_logger() -> &'static Mutex<BufWriter<File>> {
     LOGGER
         .get_or_init(async || {
             let args = &*crate::ARGS;
+
+            let mut open = OpenOptions::new();
+            open.create(true).append(true);
+
             if let Some(path) = &args.log_file {
-                let res = OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open(path)
-                    .await;
+                let res = open.open(path).await;
 
                 match res {
-                    Ok(file) => Logger::File(Mutex::new(file)),
+                    Ok(file) => Mutex::new(BufWriter::with_capacity(1024 * 16, file)),
                     Err(err) => {
                         eprintln!(
                             "{} Failed to open log file: {}\nCause: {}",
@@ -56,18 +50,44 @@ async fn init_logger() -> &'static Logger {
                             err
                         );
 
-                        Logger::Stdout(Mutex::new(stdout()))
+                        Mutex::new(BufWriter::with_capacity(
+                            1024 * 16,
+                            open.open("crawn.log")
+                                .await
+                                .inspect_err(|e| {
+                                    eprintln!(
+                                        "{} Failed to open log file: crawn.log\nCause: {}",
+                                        "[FATAL]".red(),
+                                        e
+                                    );
+                                    std::process::exit(1);
+                                })
+                                .unwrap(),
+                        ))
                     }
                 }
             } else {
-                Logger::Stdout(Mutex::new(stdout()))
+                Mutex::new(BufWriter::with_capacity(
+                    1024 * 16,
+                    open.open("crawn.log")
+                        .await
+                        .inspect_err(|e| {
+                            eprintln!(
+                                "{} Failed to open log file: crawn.log\nCause: {}",
+                                "[FATAL]".red(),
+                                e
+                            );
+                            std::process::exit(1);
+                        })
+                        .unwrap(),
+                ))
             }
         })
         .await
 }
 
 pub trait Log<T> {
-    async fn log(self, level: &'static str) -> Res<Option<T>>;
+    async fn log(self) -> Res<Option<T>>;
 }
 
 pub const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] = format_description!(
@@ -75,7 +95,7 @@ pub const LOG_TIMESTAMP_FORMAT: &[time::format_description::BorrowedFormatItem] 
 );
 
 impl<T> Log<T> for Res<T> {
-    async fn log(self, level: &'static str) -> Res<Option<T>> {
+    async fn log(self) -> Res<Option<T>> {
         match self {
             Ok(ok) => Ok(Some(ok)),
             Err(err) => {
@@ -89,44 +109,34 @@ impl<T> Log<T> for Res<T> {
 
                 let logger = init_logger().await;
 
-                match logger {
-                    Logger::File(mutex_wtr) => {
-                        let mut wtr = mutex_wtr.lock().await;
+                {
+                    let wtr: &mut BufWriter<File> = &mut *logger.lock().await;
 
-                        let log = format!("{} {}:\n{}\n\n", timestamp, level, err);
+                    wtr.write_all(timestamp.as_bytes())
+                        .await
+                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
-                        wtr.write_all(log.as_bytes())
-                            .await
-                            .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                    wtr.write_all(b" [WARN]:")
+                        .await
+                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
-                        Ok(None)
-                    }
+                    wtr.write_all(err.to_string().as_bytes())
+                        .await
+                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
-                    Logger::Stdout(mutex_stdout) => {
-                        let mut stdout = mutex_stdout.lock().await;
-
-                        let log = format!(
-                            "{} {}:\n{}\n\n",
-                            timestamp.yellow(),
-                            level.fg::<MediumPurple>(),
-                            err
-                        );
-
-                        stdout
-                            .write_all(log.as_bytes())
-                            .await
-                            .with_context(format_args!("Failed to write log at: {}", timestamp))?;
-
-                        Ok(None)
-                    }
+                    wtr.write_all(b"\n")
+                        .await
+                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
                 }
+
+                Ok(None)
             }
         }
     }
 }
 
 impl Log<()> for String {
-    async fn log(self, level: &'static str) -> Res<Option<()>> {
+    async fn log(self) -> Res<Option<()>> {
         let timestamp: String = time::OffsetDateTime::now_utc()
             .to_offset(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
             .format(&LOG_TIMESTAMP_FORMAT)
@@ -135,37 +145,23 @@ impl Log<()> for String {
 
         let logger = init_logger().await;
 
-        match logger {
-            Logger::File(mutex_wtr) => {
-                let mut wtr = mutex_wtr.lock().await;
+        {
+            let wtr: &mut BufWriter<File> = &mut *logger.lock().await;
 
-                let log = format!("{} {}:\n{}\n\n", timestamp, level, self);
+            wtr.write_all(timestamp.as_bytes())
+                .await
+                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
-                wtr.write_all(log.as_bytes())
-                    .await
-                    .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+            wtr.write_all(b" [INFO]:")
+                .await
+                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
 
-                Ok(None)
-            }
-
-            Logger::Stdout(mutex_stdout) => {
-                let mut stdout = mutex_stdout.lock().await;
-
-                let log = format!(
-                    "{} {}:\n{}\n\n",
-                    timestamp.yellow(),
-                    level.fg::<MediumPurple>(),
-                    self
-                );
-
-                stdout
-                    .write_all(log.as_bytes())
-                    .await
-                    .with_context(format_args!("Failed to write log at: {}", timestamp))?;
-
-                Ok(None)
-            }
+            wtr.write_all(self.as_bytes())
+                .await
+                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
         }
+
+        Ok(None)
     }
 }
 

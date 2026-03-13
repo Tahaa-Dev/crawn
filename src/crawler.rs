@@ -80,9 +80,7 @@ pub async fn worker<R: UrlRepo>(
     let content = fetch_url(&url, client).await?;
 
     if args.verbose {
-        format!("Fetched content from URL: {}", &url)
-            .log("[INFO]")
-            .await?;
+        format!("Fetched content from URL: {}", &url).log().await?;
     }
 
     let (links, title, text, content) = {
@@ -124,10 +122,10 @@ pub async fn worker<R: UrlRepo>(
             let mut rp = temp.lock().await;
 
             for link in links {
-                let link = match_option!(link.log("[WARN]").await?);
-                let link = match_option!(normalize_url(link).log("[WARN]").await?);
+                let link = match_option!(link.log().await?);
+                let link = match_option!(normalize_url(link).log().await?);
 
-                match_option!(rp.add(link).await.log("[WARN]").await?);
+                match_option!(rp.add(link).await.log().await?);
 
                 link_count += 1;
             }
