@@ -21,7 +21,8 @@ pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
                 .context(ctx!("Failed to fetch URL: {}", url))
                 .context(ctx!(
                     "Server returned {} response, status code: {}",
-                    "`TOO_MANY_REQUESTS`", "429"
+                    "`TOO_MANY_REQUESTS`",
+                    "429"
                 ))
                 .context(
                     "Will wait for 2.5 second timeout to avoid more bad responses and IP bans",
@@ -32,10 +33,10 @@ pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
                 .context(ctx!("Server returned status code: {}", stat))?;
         }
     }
-    let text = res.text().await.context(ctx!(
-        "Failed to fetch HTML (content) from URL: {}",
-        url
-    ))?;
+    let text = res
+        .text()
+        .await
+        .context(ctx!("Failed to fetch HTML (content) from URL: {}", url))?;
 
     Ok(text)
 }

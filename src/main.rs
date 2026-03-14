@@ -29,7 +29,7 @@
 //!
 //! - Extracted text only:                                                                               
 //! ```bash                                                                                              
-//! crawn --include-text https://example.com | sed -i 's/[^\r]\n/\r\n/g' | jq -s '.' | cat > output.json 
+//! crawn --include-text https://example.com | sed -i 's/[^\r]\n/\r\n/g' | jq -s '.' | cat > output.json
 //! ```                                                                                                  
 //!
 //! ---
@@ -109,12 +109,12 @@
 //! ```bash
 //! crawn https://doc.rust-lang.org/book/ | cat output.ndjson
 //! ```
-//! 
+//!
 //! - Crawl with Logging to custom file:
 //! ```bash
 //! crawn -l crawler.log -v https://example.com | jq -s '.'
 //! ```
-//! 
+//!
 //! - Limit to 2 Levels Deep:
 //! ```bash
 //! crawn -m 2 https://example.com | cat > shallow.ndjson
@@ -140,9 +140,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use owo_colors::OwoColorize;
+use resext::ctx;
 use tokio::io::{AsyncReadExt, stdin};
 use tokio::sync::Mutex;
-use resext::ctx;
 
 mod cli;
 mod crawler;
@@ -157,7 +157,7 @@ pub use repo::*;
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::error::{LOG_TIMESTAMP_FORMAT, Log, Res, ResExt, ResErr, flush_logger};
+use crate::error::{LOG_TIMESTAMP_FORMAT, Log, Res, ResErr, ResExt, flush_logger};
 use crate::output::{flush_writer, write_output};
 
 pub static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
@@ -177,10 +177,20 @@ async fn run() -> Res<()> {
     if args.url.is_some() {
         url = unsafe { args.url.as_ref().unwrap_unchecked() }.to_string();
     } else {
-        let bytes_read = stdin().read_to_string(&mut url).await.context("Failed to read base URL from Stdin")?;
+        let bytes_read = stdin()
+            .read_to_string(&mut url)
+            .await
+            .context("Failed to read base URL from Stdin")?;
 
         if bytes_read < 10 {
-            return Err(ResErr::from_args(ctx!("Invalid input from Stdin: {}", &url), std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid Stdin data")));
+            return Err(ResErr::from_args(
+                ctx!("Invalid input from Stdin: {}", &url),
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid Stdin data"),
+            ));
+        }
+
+        while url.ends_with([' ', '\r', '\n', '\t']) {
+            url.pop();
         }
     }
 
@@ -327,8 +337,8 @@ async fn run() -> Res<()> {
                             let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
                                 < args.max_depth.unwrap_or(4);
 
-                            let other = Url::parse(&url)
-                                .context(ctx!("Failed to parse URL: {}", &url))?;
+                            let other =
+                                Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
 
                             if should_crawl(
                                 Arc::clone(&base_domain),
