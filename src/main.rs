@@ -2,35 +2,35 @@
 //!
 //! ## Usage
 //!
-//! - Basic Crawling:
-//! ```bash
-//! crawn -o output.ndjson https://example.com
-//! ```
+//! - Basic Crawling:                                                                                    
+//! ```bash                                                                                              
+//! crawn https://example.com                                                                            
+//! ```                                                                                                  
 //!
-//! - With Logging:
-//! ```bash
-//! crawn -o output.ndjson -l crawler.log https://example.com
-//! ```
+//! - With Logging:                                                                                      
+//! ```bash                                                                                              
+//! crawn -l crawler.log https://example.com                                                             
+//! ```                                                                                                  
 //!
-//! - Verbose Mode (Log All Requests):
-//! ```bash
-//! crawn -o output.ndjson -v https://example.com
-//! ```
+//! - Verbose Mode (Log All Requests):                                                                   
+//! ```bash                                                                                              
+//! crawn -v https://example.com | bat --language json                                                   
+//! ```                                                                                                  
 //!
-//! - Custom Depth Limit:
-//! ```bash
-//! crawn -o output.ndjson -m 3 https://example.com
-//! ```
+//! - Custom Depth Limit:                                                                                
+//! ```bash                                                                                              
+//! crawn -m 3 https://example.com | grep 'rust' | cat > output.ndjson                                   
+//! ```                                                                                                  
 //!
-//! - Full HTML:
-//! ```bash
-//! crawn -o output.ndjson --include-content https://example.com
-//! ```
+//! - Full HTML:                                                                                         
+//! ```bash                                                                                              
+//! crawn --include-content https://example.com | jq -s '.'                                              
+//! ```                                                                                                  
 //!
-//! - Extracted text only:
-//! ```bash
-//! crawn -o output.ndjson --include-text https://example.com
-//! ```
+//! - Extracted text only:                                                                               
+//! ```bash                                                                                              
+//! crawn --include-text https://example.com | sed -i 's/[^\r]\n/\r\n/g' | jq -s '.' | cat > output.json 
+//! ```                                                                                                  
 //!
 //! ---
 //!
@@ -95,11 +95,9 @@
 //! #### Log Format:
 //!
 //! ```text
-//! 2026-01-24 02:37:40.351 [INFO]:
-//! Sent request to URL: https://example.com
+//! 2026-01-24 02:37:40.351 [INFO]: Sent request to URL: https://example.com
 //!
-//! 2026-01-24 02:37:41.123 [WARN]:
-//! Failed to fetch URL: https://example.com/broken-link
+//! 2026-01-24 02:37:41.123 [WARN]: Failed to fetch URL: https://example.com/broken-link
 //! Cause: HTTP 404 Not Found
 //! ```
 //!
@@ -109,17 +107,17 @@
 //!
 //! - Crawl Documentation Site:
 //! ```bash
-//! crawn -o rust-docs.ndjson https://doc.rust-lang.org/book/
+//! crawn https://doc.rust-lang.org/book/ | cat output.ndjson
 //! ```
-//!
-//! - Crawl with Logging:
+//! 
+//! - Crawl with Logging to custom file:
 //! ```bash
-//! crawn -o output.ndjson -l crawler.log -v https://example.com
+//! crawn -l crawler.log -v https://example.com | jq -s '.'
 //! ```
-//!
+//! 
 //! - Limit to 2 Levels Deep:
 //! ```bash
-//! crawn -o shallow.ndjson -m 2 https://example.com
+//! crawn -m 2 https://example.com | cat > shallow.ndjson
 //! ```
 //!
 //! ---

@@ -1,5 +1,23 @@
 <h1 align="center">Changelog</h1>
 
+## [v0.3.0] 2026-03-14
+
+### Summary
+
+- Made CLI fully integrated with the Unix ecosystem
+
+### Details
+
+- CLI now defaults to logging to ./crawn.log instead of Stdout when log-file is unspecified
+- Base URL is now not required as it can be extracted from Stdin if it is not provided via CLI args
+- Output is now to Stdout for piping to other Unix tools, example:
+
+```bash
+crawn --include-text https://example.com | grep 'rust' | sed -i 's/[^\r]\n/\r\n/g' | jq -s '.' | cat > output.json
+```
+
+---
+
 ## [v0.2.0] 2026-02-03
 
 ### Summary
