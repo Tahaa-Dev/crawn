@@ -142,7 +142,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use owo_colors::OwoColorize;
+use tokio::io::{AsyncReadExt, stdin};
 use tokio::sync::Mutex;
+use resext::ctx;
 
 mod cli;
 mod crawler;
@@ -157,7 +159,7 @@ pub use repo::*;
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::error::{LOG_TIMESTAMP_FORMAT, Log, Res, ResExt};
+use crate::error::{LOG_TIMESTAMP_FORMAT, Log, Res, ResExt, ResErr, flush_logger};
 use crate::output::{flush_writer, write_output};
 
 pub static ARGS: LazyLock<cli::Args> = LazyLock::new(cli::Args::parse);
@@ -172,26 +174,37 @@ async fn run() -> Res<()> {
     let pending = Arc::new(AtomicUsize::new(0));
     let crawled = Arc::clone(&*CRAWLED);
     let successes = Arc::clone(&*SUCCESSES);
-    let url = &args.url;
-    let base = Url::parse(url).context("Failed to parse base URL")?;
+
+    let mut url = String::new();
+    if args.url.is_some() {
+        url = unsafe { args.url.as_ref().unwrap_unchecked() }.to_string();
+    } else {
+        let bytes_read = stdin().read_to_string(&mut url).await.context("Failed to read base URL from Stdin")?;
+
+        if bytes_read < 10 {
+            return Err(ResErr::from_args(ctx!("Invalid input from Stdin: {}", &url), std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid Stdin data")));
+        }
+    }
+
+    let base = Url::parse(&url).context("Failed to parse base URL")?;
 
     let base_keywords = Arc::new(get_keywords(&base));
 
     let base_domain = Arc::new(base.domain().unwrap_or_default().to_owned());
 
     let selectors = Arc::new(Selectors {
-        anchor: Selector::parse("a[href]").with_context(format_args!(
+        anchor: Selector::parse("a[href]").context(ctx!(
             "Failed to parse selector for HTML 'anchor' (link) tag: {}",
             "`<a href=\"URL\">`".yellow()
         ))?,
 
-        title: Selector::parse("title").with_context(format_args!(
+        title: Selector::parse("title").context(ctx!(
             "Failed to parse selector for HTML 'title' tag: {}",
             "`<title>`".yellow()
         ))?,
 
         body: if args.include_text {
-            Some(Selector::parse("body").with_context(format_args!(
+            Some(Selector::parse("body").context(ctx!(
                 "Failed to parse selector for HTML 'body' tag: {}",
                 "`<body>`".yellow()
             ))?)
@@ -201,7 +214,7 @@ async fn run() -> Res<()> {
     });
 
     crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let content = fetch_url(url, Arc::clone(&client))
+    let content = fetch_url(&url, Arc::clone(&client))
         .await
         .context("Failed to fetch base URL")?;
 
@@ -317,7 +330,7 @@ async fn run() -> Res<()> {
                                 < args.max_depth.unwrap_or(4);
 
                             let other = Url::parse(&url)
-                                .with_context(format_args!("Failed to parse URL: {}", &url))?;
+                                .context(ctx!("Failed to parse URL: {}", &url))?;
 
                             if should_crawl(
                                 Arc::clone(&base_domain),
@@ -359,7 +372,8 @@ async fn run() -> Res<()> {
         task.await.context("Failed to spawn concurrent worker")??;
     }
 
-    flush_writer().await
+    flush_writer().await?;
+    flush_logger().await
 }
 
 #[tokio::main]
@@ -405,7 +419,7 @@ async fn main() -> std::process::ExitCode {
                     String::from("")
                 });
 
-            eprintln!("{} {}:\n {}", timestamp.yellow(), "[FATAL]".red().bold(), e);
+            eprintln!("{} {}:\n{}", timestamp.yellow(), "[FATAL]".red().bold(), e);
             std::process::ExitCode::FAILURE
         }
     }

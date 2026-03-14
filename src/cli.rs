@@ -4,17 +4,17 @@ use std::path::PathBuf;
 static LONG_ABT: &str = r#"
 crawn - A utility for web crawling and scraping
 
-  • crawn provides a simple way for crawling URLs and scraping HTML from them.
-  • crawn has exceptional speed due to being built in optimized Rust with tokio async.
-  • Easy to debug errors with detailed logs.
+  -> crawn provides a simple way for crawling URLs and scraping HTML from them.
+  -> crawn has exceptional speed due to being built in optimized Rust with tokio async.
+  -> Easy to debug errors with detailed logs.
 
-╭────────────────────────·Examples·──────────────────────────╮
-│                                                        ••• │
-│ crawn -o output.ndjson https://ex.com/index.html           │
-│ crawn -o out.ndjson https://ex.com/index.html -l err.log   │
-│ crawn -o crawn.ndjson https://ex.com/index.html -v         │
-│                                                            │
-╰────────────────────────────────────────────────────────────╯
+╭──────────────────────·Examples·──────────────────────╮
+│                                                  ••• │
+│ crawn https://ex.com/index.html > out.ndjson         │
+│ crawn https://ex.com/index.html -l f.log | jq -s '.' │
+│ crawn https://ex.com/index.html -v | grep 'captcha'  │
+│                                                      │
+╰──────────────────────────────────────────────────────╯
 "#;
 
 #[derive(clap::Parser)]
@@ -26,12 +26,9 @@ crawn - A utility for web crawling and scraping
 )]
 pub struct Args {
     /// The starting URL to crawl
-    #[arg(required = true, value_hint = ValueHint::Url)]
-    pub url: String,
-
-    /// Output file path for NDJSON results
-    #[arg(short, long, required = true, value_hint = ValueHint::FilePath)]
-    pub output: PathBuf,
+    /// If it is not providied as an arg, it is extracted from Stdin
+    #[arg(value_hint = ValueHint::Url)]
+    pub url: Option<String>,
 
     /// Optional log file path (logs to stdout if not provided)
     #[arg(short, long, value_hint = ValueHint::FilePath, global = true)]

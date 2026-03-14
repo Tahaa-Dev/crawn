@@ -1,3 +1,4 @@
+use resext::ctx;
 use std::{sync::Arc, time::Duration};
 
 use reqwest::StatusCode;
@@ -17,8 +18,8 @@ pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
         if let StatusCode::TOO_MANY_REQUESTS = stat {
             client.timeout(Duration::from_millis(2500)).await;
             res.error_for_status_ref()
-                .with_context(format_args!("Failed to fetch URL: {}", url))
-                .with_context(format_args!(
+                .context(ctx!("Failed to fetch URL: {}", url))
+                .context(ctx!(
                     "Server returned {} response, status code: {}",
                     "`TOO_MANY_REQUESTS`", "429"
                 ))
@@ -27,11 +28,11 @@ pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
                 )?;
         } else {
             res.error_for_status_ref()
-                .with_context(format_args!("Failed to fetch URL: {}", url))
-                .with_context(format_args!("Server returned status code: {}", stat))?;
+                .context(ctx!("Failed to fetch URL: {}", url))
+                .context(ctx!("Server returned status code: {}", stat))?;
         }
     }
-    let text = res.text().await.with_context(format_args!(
+    let text = res.text().await.context(ctx!(
         "Failed to fetch HTML (content) from URL: {}",
         url
     ))?;
@@ -51,7 +52,7 @@ pub fn extract_links(document: &Html, base: Arc<Url>, anchor_selector: &Selector
             })?;
 
             base.join(href)
-                .with_context(format_args!("Failed to resolve relative URL: {}", href))
+                .context(ctx!("Failed to resolve relative URL: {}", href))
         })
         .collect()
 }

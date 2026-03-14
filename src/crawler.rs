@@ -1,3 +1,4 @@
+use resext::ctx;
 use std::{
     collections::HashSet,
     sync::{Arc, LazyLock},
@@ -47,7 +48,7 @@ impl CrawnClient {
             .get(url)
             .send()
             .await
-            .with_context(format_args!("Failed to fetch URL: {}", url));
+            .context(ctx!("Failed to fetch URL: {}", url));
 
         *next_req = Instant::now() + Duration::from_millis(rand::random_range(300..601));
 
@@ -75,7 +76,7 @@ pub async fn worker<R: UrlRepo>(
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
 
-    let base = Url::parse(&url).with_context(format_args!("Failed to parse URL: {}", &url))?;
+    let base = Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
 
     let content = fetch_url(&url, client).await?;
 

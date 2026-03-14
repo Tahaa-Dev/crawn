@@ -1,3 +1,4 @@
+use resext::ctx;
 use owo_colors::{OwoColorize, colors::css::MediumPurple};
 use resext::resext;
 use time::macros::format_description;
@@ -11,7 +12,8 @@ use tokio::{
     delimiter = " -> ",
     source_prefix = "Cause: ",
     include_variant = true,
-    alloc = true
+    alloc = true,
+    buf_size = 76
 )]
 pub enum CrawnError {
     IoError(std::io::Error),
@@ -114,19 +116,19 @@ impl<T> Log<T> for Res<T> {
 
                     wtr.write_all(timestamp.as_bytes())
                         .await
-                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                        .context(ctx!("Failed to write log at: {}", timestamp))?;
 
-                    wtr.write_all(b" [WARN]:")
+                    wtr.write_all(b" [WARN]: ")
                         .await
-                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                        .context(ctx!("Failed to write log at: {}", timestamp))?;
 
                     wtr.write_all(err.to_string().as_bytes())
                         .await
-                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                        .context(ctx!("Failed to write log at: {}", timestamp))?;
 
                     wtr.write_all(b"\n")
                         .await
-                        .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                        .context(ctx!("Failed to write log at: {}", timestamp))?;
                 }
 
                 Ok(None)
@@ -150,19 +152,29 @@ impl Log<()> for String {
 
             wtr.write_all(timestamp.as_bytes())
                 .await
-                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                .context(ctx!("Failed to write log at: {}", timestamp))?;
 
-            wtr.write_all(b" [INFO]:")
+            wtr.write_all(b" [INFO]: ")
                 .await
-                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                .context(ctx!("Failed to write log at: {}", timestamp))?;
 
             wtr.write_all(self.as_bytes())
                 .await
-                .with_context(format_args!("Failed to write log at: {}", timestamp))?;
+                .context(ctx!("Failed to write log at: {}", timestamp))?;
+
+            wtr.write_all(b"\n")
+                .await
+                .context(ctx!("Failed to write log at: {}", timestamp))?;
         }
 
         Ok(None)
     }
+}
+
+pub async fn flush_logger() -> Res<()> {
+    let mut logger = init_logger().await.lock().await;
+
+    logger.flush().await.context("Failed to flush logger")
 }
 
 #[macro_export]

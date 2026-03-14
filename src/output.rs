@@ -1,55 +1,16 @@
-use owo_colors::OwoColorize;
 use tokio::{
-    fs::{File, OpenOptions},
-    io::{AsyncWriteExt, BufWriter},
+    io::{AsyncWriteExt, BufWriter, Stdout, stdout},
     sync::{Mutex, OnceCell},
 };
 
 use crate::error::{Res, ResExt};
 
-static WRITER: OnceCell<Mutex<BufWriter<File>>> = OnceCell::const_new();
+static WRITER: OnceCell<Mutex<BufWriter<Stdout>>> = OnceCell::const_new();
 
-async fn init_writer() -> &'static Mutex<BufWriter<File>> {
+async fn init_writer() -> &'static Mutex<BufWriter<Stdout>> {
     WRITER
         .get_or_init(async || {
             let args = &*crate::ARGS;
-            let path = &args.output;
-
-            let ext = path.extension().unwrap_or_else(|| std::ffi::OsStr::new(""));
-
-            if ext != "ndjson" {
-                eprintln!(
-                    "{} Output file extension: {}{}{} is not: {}",
-                    "[FATAL]".red().bold(),
-                    "[".purple(),
-                    ext.display().purple(),
-                    "]".purple(),
-                    "[ndjson]".purple()
-                );
-                std::process::exit(1);
-            }
-
-            let res = OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open(path)
-                .await;
-
-            let file = match res {
-                Ok(file) => file,
-                Err(err) => {
-                    eprintln!(
-                        "{} Failed to open output file: {}\nCause: {}",
-                        "[FATAL]".red().bold(),
-                        path.to_string_lossy().red().bold(),
-                        err
-                    );
-
-                    std::process::exit(1);
-                }
-            };
-
             let buf_cap = if args.include_content {
                 1024 * 16
             } else if args.include_text {
@@ -58,7 +19,7 @@ async fn init_writer() -> &'static Mutex<BufWriter<File>> {
                 256
             };
 
-            Mutex::new(BufWriter::with_capacity(buf_cap, file))
+            Mutex::new(BufWriter::with_capacity(buf_cap, stdout()))
         })
         .await
 }
@@ -70,7 +31,7 @@ pub async fn flush_writer() -> Res<()> {
         .await
         .flush()
         .await
-        .context("Failed to flush writer into output file")
+        .context("Failed to flush writer")
 }
 
 pub async fn write_output(
@@ -120,7 +81,7 @@ pub async fn write_output(
         .await
         .write_all(&line)
         .await
-        .context("Failed to write output entry into output file")?;
+        .context("Failed to write output entry")?;
 
     Ok(())
 }
