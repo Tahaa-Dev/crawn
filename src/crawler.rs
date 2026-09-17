@@ -71,12 +71,11 @@ pub async fn worker<R: UrlRepo>(
     selectors: Arc<Selectors>,
     client: Arc<CrawnClient>,
     url: &str,
+    base: Url,
     can_extract: bool,
 ) -> Res<()> {
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
-
-    let base = Url::parse(url).context(ctx!("Failed to parse URL: {}", url))?;
 
     let content = fetch_url(url, client).await?;
 
@@ -91,7 +90,7 @@ pub async fn worker<R: UrlRepo>(
         let task = tokio::task::spawn_blocking(move || {
             let doc = Html::parse_document(&content);
             let links = if can_extract {
-                extract_links(&doc, Arc::new(base), &selectors.anchor)
+                extract_links(&doc, &base, &selectors.anchor)
             } else {
                 Vec::new()
             };

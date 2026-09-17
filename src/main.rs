@@ -134,7 +134,7 @@
 //!
 //! crawn is licensed under the **MIT** license.
 
-use std::sync::atomic::{AtomicU8, AtomicUsize};
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -168,10 +168,10 @@ async fn run() -> Res<()> {
     let args = &*ARGS;
     let repo = Arc::new(Mutex::new(InMemoryRepo::default()));
     let client = Arc::new(CrawnClient::new()?);
-    let curr_depth = Arc::new(AtomicU8::new(0));
     let pending = Arc::new(AtomicUsize::new(0));
     let crawled = Arc::clone(&*CRAWLED);
     let successes = Arc::clone(&*SUCCESSES);
+    let mut curr_depth = 0;
 
     let mut buf = String::new();
     let mut url = "";
@@ -236,7 +236,7 @@ async fn run() -> Res<()> {
 
     let doc = Html::parse_document(&content);
 
-    let links = extract_links(&doc, Arc::new(base), &selectors.anchor);
+    let links = extract_links(&doc, &base, &selectors.anchor);
     let mut link_count = 0usize;
     {
         let mut rp = repo.lock().await;
@@ -254,7 +254,7 @@ async fn run() -> Res<()> {
         }
         rp.add(String::from("M")).await?;
     }
-    curr_depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    curr_depth += 1;
 
     let text = selectors
         .body
@@ -275,7 +275,7 @@ async fn run() -> Res<()> {
 
     let mut tasks = Vec::new();
     loop {
-        if curr_depth.load(std::sync::atomic::Ordering::SeqCst) > args.max_depth.unwrap_or(4) {
+        if curr_depth > args.max_depth.unwrap_or(4) {
             break;
         }
 
@@ -285,77 +285,66 @@ async fn run() -> Res<()> {
         };
 
         let pending = Arc::clone(&pending);
+
         match work_item {
-            None => {
+            None if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+
+            None => break,
+
+            Some(url) if &url == "M" => loop {
                 if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 } else {
+                    repo.lock()
+                        .await
+                        .add(url)
+                        .await
+                        .context("Failed to add depth marker to URL queue")
+                        .log()
+                        .await?
+                        .unwrap_or_default();
+
+                    curr_depth += 1;
                     break;
                 }
-            }
+            },
 
             Some(url) => {
-                let repo = repo.clone();
+                pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                let repo = Arc::clone(&repo);
                 let base_keywords = Arc::clone(&base_keywords);
                 let base_domain = Arc::clone(&base_domain);
                 let selectors = Arc::clone(&selectors);
                 let client = Arc::clone(&client);
-                let curr_depth = Arc::clone(&curr_depth);
                 let crawled = Arc::clone(&crawled);
                 let successes = Arc::clone(&successes);
 
-                if &url == "M" {
-                    loop {
-                        if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                        } else {
-                            repo.lock()
-                                .await
-                                .add(url.to_owned())
-                                .await
-                                .log()
-                                .await?
-                                .unwrap_or_default();
+                let task: tokio::task::JoinHandle<Res<()>> = tokio::task::spawn(async move {
+                    let can_extract = curr_depth < args.max_depth.unwrap_or(4);
 
-                            curr_depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            break;
-                        }
-                    }
-                } else {
-                    let task: tokio::task::JoinHandle<Res<()>> = tokio::task::spawn(async move {
-                        pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let base = Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
 
-                        let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
-                            < args.max_depth.unwrap_or(4);
+                    if should_crawl(base_domain, base_keywords, &base) {
+                        crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-                        let other =
-                            Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
-
-                        if should_crawl(base_domain, base_keywords, &other) {
-                            crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                            let is_success = worker(
-                                Arc::clone(&repo),
-                                Arc::clone(&selectors),
-                                Arc::clone(&client),
-                                &url,
-                                can_extract,
-                            )
+                        let is_success = worker(repo, selectors, client, &url, base, can_extract)
                             .await
                             .log()
                             .await?
                             .is_some();
 
-                            if is_success {
-                                successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            }
+                        if is_success {
+                            successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         }
+                    }
 
-                        pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                        Ok(())
-                    });
-                    tasks.push(task);
-                }
+                    pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                });
+                tasks.push(task);
             }
         }
     }

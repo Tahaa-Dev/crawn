@@ -49,8 +49,12 @@ pub async fn write_output(
     line.extend_from_slice(b"\", \"Title\": \"");
     escape_json(title.bytes(), &mut line);
 
-    line.extend_from_slice(b"\", \"Links\": ");
-    line.extend_from_slice(links.to_string().as_bytes());
+    if links != 0 {
+        line.extend_from_slice(b"\", \"Links\": ");
+        line.extend_from_slice(links.to_string().as_bytes());
+    } else {
+        line.push(b'"');
+    }
 
     if let Some(t) = text {
         line = tokio::task::spawn_blocking(move || {

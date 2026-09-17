@@ -41,7 +41,7 @@ pub async fn fetch_url(url: &str, client: Arc<CrawnClient>) -> Res<String> {
     Ok(text)
 }
 
-pub fn extract_links(document: &Html, base: Arc<Url>, anchor_selector: &Selector) -> Vec<Res<Url>> {
+pub fn extract_links(document: &Html, base: &Url, anchor_selector: &Selector) -> Vec<Res<Url>> {
     document
         .select(anchor_selector)
         .map(|anchor| {
@@ -57,6 +57,7 @@ pub fn extract_links(document: &Html, base: Arc<Url>, anchor_selector: &Selector
         })
         .collect()
 }
+
 pub fn extract_text(document: &Html, body_selector: &Selector) -> String {
     if let Some(body) = document.select(body_selector).next() {
         body.text()
@@ -94,8 +95,6 @@ pub fn normalize_url(mut url: Url) -> Res<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use scraper::{Html, Selector};
     use url::Url;
 
@@ -133,7 +132,7 @@ mod tests {
 
         let title = extract_title(&html, &title_selector);
 
-        assert_eq!(title, "Example title for test");
+        assert_eq!(title.trim(), "Example title for test");
 
         Ok(())
     }
@@ -179,7 +178,7 @@ mod tests {
         let base = Url::parse("https://example.com/category/index.html")
             .context("Failed to parse base URL for testing resolving relative paths")?;
 
-        let links = extract_links(&document, Arc::new(base), &anchor_selector);
+        let links = extract_links(&document, &base, &anchor_selector);
 
         assert_eq!(
             links
