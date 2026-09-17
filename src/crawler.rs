@@ -70,18 +70,18 @@ pub async fn worker<R: UrlRepo>(
     repo: Arc<Mutex<R>>,
     selectors: Arc<Selectors>,
     client: Arc<CrawnClient>,
-    url: String,
+    url: &str,
     can_extract: bool,
 ) -> Res<()> {
     let args = &*crate::ARGS;
     let client = Arc::clone(&client);
 
-    let base = Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
+    let base = Url::parse(url).context(ctx!("Failed to parse URL: {}", url))?;
 
-    let content = fetch_url(&url, client).await?;
+    let content = fetch_url(url, client).await?;
 
     if args.verbose {
-        format!("Fetched content from URL: {}", &url).log().await?;
+        format!("Fetched content from URL: {}", url).log().await?;
     }
 
     let (links, title, text, content) = {
@@ -135,7 +135,7 @@ pub async fn worker<R: UrlRepo>(
         (link_count, title, text, content)
     };
 
-    write_output(url, title, links, text, content)
+    write_output(url, title.trim(), links, text, content)
         .await
         .context("Failed to write output entry for URL")?;
 

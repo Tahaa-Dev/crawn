@@ -10,7 +10,7 @@ use crate::{
     error::{Res, ResErr, ResExt},
 };
 
-pub async fn fetch_url(url: &String, client: Arc<CrawnClient>) -> Res<String> {
+pub async fn fetch_url(url: &str, client: Arc<CrawnClient>) -> Res<String> {
     let res = client.get(url).await?;
     let stat = res.status();
 
@@ -71,7 +71,7 @@ pub fn extract_text(document: &Html, body_selector: &Selector) -> String {
 
 pub fn extract_title(document: &Html, title_selector: &Selector) -> String {
     if let Some(title) = document.select(title_selector).next() {
-        title.text().collect::<String>().trim().to_string()
+        title.text().collect::<String>()
     } else {
         String::new()
     }

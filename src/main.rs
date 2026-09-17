@@ -173,16 +173,17 @@ async fn run() -> Res<()> {
     let crawled = Arc::clone(&*CRAWLED);
     let successes = Arc::clone(&*SUCCESSES);
 
-    let mut url = String::new();
-    if args.url.is_some() {
-        url = unsafe { args.url.as_ref().unwrap_unchecked() }.to_string();
+    let mut buf = String::new();
+    let mut url = "";
+    if let Some(ref url_arg) = args.url {
+        url = url_arg
     } else {
         let bytes_read = stdin()
-            .read_to_string(&mut url)
+            .read_to_string(&mut buf)
             .await
             .context("Failed to read base URL from Stdin")?;
 
-        if bytes_read < 10 {
+        if bytes_read >= 2 {
             return Err(ResErr::from_args(
                 ctx!("Invalid input from Stdin: {}", &url),
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid Stdin data"),
@@ -190,11 +191,12 @@ async fn run() -> Res<()> {
         }
 
         while url.ends_with([' ', '\r', '\n', '\t']) {
-            url.pop();
+            buf.pop();
         }
+        url = &buf
     }
 
-    let base = Url::parse(&url).context("Failed to parse base URL")?;
+    let base = Url::parse(url).context("Failed to parse base URL")?;
 
     let base_keywords = Arc::new(get_keywords(&base));
 
@@ -222,7 +224,7 @@ async fn run() -> Res<()> {
     });
 
     crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let content = fetch_url(&url, Arc::clone(&client))
+    let content = fetch_url(url, Arc::clone(&client))
         .await
         .context("Failed to fetch base URL")?;
 
@@ -238,7 +240,7 @@ async fn run() -> Res<()> {
     let mut link_count = 0usize;
     {
         let mut rp = repo.lock().await;
-        rp.mark(url.clone())
+        rp.mark(url.to_owned())
             .await
             .context("Failed to mark base URL as visited")?;
 
@@ -266,114 +268,96 @@ async fn run() -> Res<()> {
         None
     };
 
-    write_output(url.clone(), title, link_count, text, content)
+    write_output(url, title.trim(), link_count, text, content)
         .await
         .log()
         .await?;
 
-    let task_count = if args.include_content || args.include_text {
-        6
-    } else {
-        9
-    };
-
     let mut tasks = Vec::new();
-    for _ in 0..task_count {
-        let repo = Arc::clone(&repo);
-        let base_keywords = Arc::clone(&base_keywords);
-        let base_domain = Arc::clone(&base_domain);
-        let selectors = Arc::clone(&selectors);
-        let client = Arc::clone(&client);
-        let curr_depth = Arc::clone(&curr_depth);
+    loop {
+        if curr_depth.load(std::sync::atomic::Ordering::SeqCst) > args.max_depth.unwrap_or(4) {
+            break;
+        }
+
+        let work_item = {
+            let mut repo_guard = repo.lock().await;
+            repo_guard.pop().await.log().await?.unwrap_or(None)
+        };
+
         let pending = Arc::clone(&pending);
-        let crawled = Arc::clone(&crawled);
-        let successes = Arc::clone(&successes);
-
-        let task: tokio::task::JoinHandle<Res<()>> = tokio::task::spawn(async move {
-            loop {
-                if curr_depth.load(std::sync::atomic::Ordering::SeqCst)
-                    > args.max_depth.unwrap_or(4)
-                {
+        match work_item {
+            None => {
+                if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                } else {
                     break;
-                }
-
-                let work_item = {
-                    let mut repo_guard = repo.lock().await;
-                    repo_guard.pop().await.log().await?.unwrap_or(None)
-                };
-
-                match work_item {
-                    None => {
-                        if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    Some(url) => {
-                        if &url == "M" {
-                            if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-                                #[allow(clippy::unit_arg)]
-                                repo.lock().await.kick(url).await.log().await?.unwrap_or({
-                                    tokio::time::sleep(Duration::from_millis(100)).await;
-                                });
-
-                                tokio::time::sleep(Duration::from_millis(100)).await;
-                            } else {
-                                repo.lock()
-                                    .await
-                                    .add(url)
-                                    .await
-                                    .log()
-                                    .await?
-                                    .unwrap_or_default();
-
-                                curr_depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            }
-                        } else {
-                            pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                            let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
-                                < args.max_depth.unwrap_or(4);
-
-                            let other =
-                                Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
-
-                            if should_crawl(
-                                Arc::clone(&base_domain),
-                                Arc::clone(&base_keywords),
-                                &other,
-                            ) {
-                                crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                                let is_success = worker(
-                                    Arc::clone(&repo),
-                                    Arc::clone(&selectors),
-                                    Arc::clone(&client),
-                                    url,
-                                    can_extract,
-                                )
-                                .await
-                                .log()
-                                .await?
-                                .is_some();
-
-                                if is_success {
-                                    successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                                }
-                            }
-
-                            pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                        }
-                    }
                 }
             }
 
-            Ok(())
-        });
+            Some(url) => {
+                let repo = repo.clone();
+                let base_keywords = Arc::clone(&base_keywords);
+                let base_domain = Arc::clone(&base_domain);
+                let selectors = Arc::clone(&selectors);
+                let client = Arc::clone(&client);
+                let curr_depth = Arc::clone(&curr_depth);
+                let crawled = Arc::clone(&crawled);
+                let successes = Arc::clone(&successes);
 
-        tasks.push(task);
+                if &url == "M" {
+                    loop {
+                        if pending.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        } else {
+                            repo.lock()
+                                .await
+                                .add(url.to_owned())
+                                .await
+                                .log()
+                                .await?
+                                .unwrap_or_default();
+
+                            curr_depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            break;
+                        }
+                    }
+                } else {
+                    let task: tokio::task::JoinHandle<Res<()>> = tokio::task::spawn(async move {
+                        pending.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                        let can_extract = curr_depth.load(std::sync::atomic::Ordering::SeqCst)
+                            < args.max_depth.unwrap_or(4);
+
+                        let other =
+                            Url::parse(&url).context(ctx!("Failed to parse URL: {}", &url))?;
+
+                        if should_crawl(base_domain, base_keywords, &other) {
+                            crawled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                            let is_success = worker(
+                                Arc::clone(&repo),
+                                Arc::clone(&selectors),
+                                Arc::clone(&client),
+                                &url,
+                                can_extract,
+                            )
+                            .await
+                            .log()
+                            .await?
+                            .is_some();
+
+                            if is_success {
+                                successes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            }
+                        }
+
+                        pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                        Ok(())
+                    });
+                    tasks.push(task);
+                }
+            }
+        }
     }
 
     for task in tasks {

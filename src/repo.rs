@@ -7,8 +7,6 @@ pub trait UrlRepo {
 
     fn pop(&mut self) -> impl Future<Output = Res<Option<String>>> + Send + Sync;
 
-    fn kick(&mut self, url: String) -> impl Future<Output = Res<()>> + Send + Sync;
-
     fn mark(&mut self, url: String) -> impl Future<Output = Res<()>> + Send + Sync;
 }
 
@@ -36,12 +34,6 @@ impl UrlRepo for InMemoryRepo {
 
     async fn pop(&mut self) -> Res<Option<String>> {
         Ok(self.urls.pop_front())
-    }
-
-    async fn kick(&mut self, url: String) -> Res<()> {
-        self.urls.push_front(url);
-
-        Ok(())
     }
 
     async fn mark(&mut self, url: String) -> Res<()> {

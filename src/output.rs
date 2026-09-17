@@ -35,45 +35,44 @@ pub async fn flush_writer() -> Res<()> {
 }
 
 pub async fn write_output(
-    url: String,
-    title: String,
+    url: &str,
+    title: &str,
     links: usize,
     text: Option<String>,
     content: Option<String>,
 ) -> Res<()> {
-    let line = tokio::task::spawn_blocking(move || {
-        let mut buf = Vec::with_capacity(256);
-        let mut line = Vec::with_capacity(text.as_ref().map_or(1024, |t| t.len() + 512));
+    let mut line = Vec::with_capacity(text.as_ref().map_or(1024, |t| t.len() + 512));
 
-        line.extend_from_slice(b"{\"URL\": \"");
-        escape_json(&*url, &mut buf);
-        line.extend_from_slice(&buf);
+    line.extend_from_slice(b"{\"URL\": \"");
+    escape_json(url.bytes(), &mut line);
 
-        line.extend_from_slice(b"\", \"Title\": \"");
-        escape_json(title, &mut buf);
-        line.extend_from_slice(&buf);
+    line.extend_from_slice(b"\", \"Title\": \"");
+    escape_json(title.bytes(), &mut line);
 
-        line.extend_from_slice(b"\", \"Links\": ");
-        line.extend_from_slice(links.to_string().as_bytes());
+    line.extend_from_slice(b"\", \"Links\": ");
+    line.extend_from_slice(links.to_string().as_bytes());
 
-        if let Some(t) = text {
+    if let Some(t) = text {
+        line = tokio::task::spawn_blocking(move || {
             line.extend_from_slice(b", \"Text\": \"");
-            escape_json(t, &mut buf);
-            line.extend_from_slice(&buf);
+            escape_json(t.bytes(), &mut line);
             line.extend_from_slice(b"\"}\n");
-        } else if let Some(c) = content {
+            line
+        })
+        .await
+        .context("Failed to escape output concurrently")?;
+    } else if let Some(c) = content {
+        line = tokio::task::spawn_blocking(move || {
             line.extend_from_slice(b", \"Content\": \"");
-            escape_json(c, &mut buf);
-            line.extend_from_slice(&buf);
+            escape_json(c.bytes(), &mut line);
             line.extend_from_slice(b"\"}\n");
-        } else {
-            line.extend_from_slice(b"}\n");
-        }
-
-        line
-    })
-    .await
-    .context("Failed to escape output concurrently")?;
+            line
+        })
+        .await
+        .context("Failed to escape output concurrently")?;
+    } else {
+        line.extend_from_slice(b"}\n");
+    }
 
     init_writer()
         .await
@@ -87,10 +86,8 @@ pub async fn write_output(
 }
 
 #[inline(always)]
-fn escape_json<S: AsRef<str>>(s: S, buf: &mut Vec<u8>) {
-    buf.clear();
-
-    for byte in s.as_ref().bytes() {
+fn escape_json(s: core::str::Bytes<'_>, buf: &mut Vec<u8>) {
+    for byte in s {
         match byte {
             b'"' => buf.extend_from_slice(b"\\\""),
             b'\\' => buf.extend_from_slice(b"\\\\"),
@@ -120,7 +117,7 @@ mod tests {
 
         let s = "escape\t string\r\nfor \x08 \\ testing \x0C\"escape\" function";
 
-        escape_json(s, &mut buf);
+        escape_json(s.bytes(), &mut buf);
 
         assert_eq!(
             &buf,
