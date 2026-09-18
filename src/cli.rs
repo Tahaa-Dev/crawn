@@ -1,5 +1,4 @@
 use clap::ValueHint;
-use std::path::PathBuf;
 
 static LONG_ABT: &str = r#"
 crawn - A utility for web crawling and scraping
@@ -29,10 +28,6 @@ pub struct Args {
     /// If it is not providied as an arg, it is extracted from Stdin
     #[arg(value_hint = ValueHint::Url)]
     pub url: Option<String>,
-
-    /// Optional log file path (logs to stdout if not provided)
-    #[arg(short, long, value_hint = ValueHint::FilePath, global = true)]
-    pub log_file: Option<PathBuf>,
 
     /// Include full HTML content in output (mutually exclusive with --include-text)
     #[arg(long, global = true, conflicts_with = "include_text")]
